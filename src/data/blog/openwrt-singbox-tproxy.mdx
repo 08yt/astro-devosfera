@@ -1,0 +1,67 @@
+---
+title: "如何在 OpenWrt 路由器上部署 Sing-box 旁路由？全屋科学上网指南"
+author: "毛佳国"
+pubDatetime: 2026-03-08T16:25:00.000+08:00
+featured: false
+draft: false
+tags:
+  - 服务器搭建
+  - OpenWrt
+description: "瞄准软路由受众（如家庭宽带、黑裙 NAS 玩家），本文讲透底层的 TProxy 或 TUN 透明代理原理，教你榨干家庭网络的价值。"
+---
+
+手机和电脑上的代理软件一旦切断，家里的智能设备、游戏主机（如 PS5、Switch、Apple TV）还是无法直接访问广阔的互联网。这就是为什么极客们热衷于在**软路由**上折腾“旁路由”或透明代理。
+
+**Sing-box** 作为集大成者，在 OpenWrt 等定制系统上拥有比 OpenClash 等图形化插件更强大也更纯净的 TProxy 表现。
+
+## Table of contents
+
+## 什么是旁路由（Bypass Router）？
+
+家里正常的上网架构是：光猫 -> 拨号的主路由 -> 所有的无线和有线设备。
+
+如果我们把**一台刷了 OpenWrt 的小型软路由（或者用 NAS 的虚拟机）接在主路由的普通网口上，它的主要工作只是帮其他设备过滤和转发请求**，这就是“旁路由”。设备的网关和 DNS 全部指向这台旁路由。所有的流量会先进旁路由，经过 Sing-box 的“洗礼分流”后，再走向世界。
+
+## 在 OpenWrt 上部署 Sing-box 服务
+
+由于基于 Linux，通过 SSH 我们可以在路由器里为所欲为。
+
+### 1. 下载和安装核心
+```bash
+# SSH 连接你的路由器
+# 下载对应的架构发布版，以 x86_64 为例
+wget https://github.com/SagerNet/sing-box/releases/.../sing-box-1.x.x-linux-amd64.tar.gz
+# 解压并移入到执行目录
+mv sing-box /usr/bin/sing-box
+```
+
+### 2. TProxy (透明代理) 的原理和核心设置
+与手机上建立 VPN 通道（TUN）不同，在 Linux 路由器上我们更常使用 **TProxy ( Transparent Proxy )** + **iptables / nftables** 规则相结合，把发往公网的所有 TCP 和 UDP 包无感重定向到本地的 Sing-box 监听端口。
+
+如果这太复杂，最简单的做法是在 `inbounds` 开启 TUN：
+```json
+{
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "tun0",
+      "inet4_address": "172.19.0.1/30",
+      "auto_route": true, // 核心在于这个自动路由！
+      "strict_route": true,
+      "stack": "system",
+      "sniff": true,
+      "sniff_override_destination": true
+    }
+  ]
+}
+```
+
+启用自动路由后，Sing-box 会自动在设备层面为你接管好所有的转发，这是前几年根本无法想象的便利。
+
+## 图形化前端推荐
+
+如果你不想手写配置文件或维护自启动守护进程：
+**推荐使用 HomeLede 等定制版 OpenWrt：** 里面本身集成了 PassWall 或是相关的可视化插件，底层也早就拥抱了 Sing-box。你可以上传转换好的 `config.json` 来直接使用。
+
+在家里搭建一套完备的 Sing-box 透明代理后，你会感叹：这才是未来智能家居中枢应该有的样子！不折腾任何客户端，连上 WiFi 即可享受无界网络。

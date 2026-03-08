@@ -1,0 +1,51 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import Header from "@/components/Header.astro";
+import Footer from "@/components/Footer.astro";
+import Main from "@/layouts/Main.astro";
+import { SITE } from "@/config";
+---
+
+<Layout title={`隐私政策 | ${SITE.title}`}>
+  <Header />
+  <Main pageTitle="隐私政策" pageDesc="详细说明我们如何对待及保护您的个人数据与隐私信息。">
+    <div class="app-prose max-w-app prose-img:border-0 mt-8 mb-28">
+      <h2>引言</h2>
+      <p>
+        在 <strong>{SITE.title}</strong>，我们极为重视来访者的隐私安全。作为一个以传播技术为导向的静态博客，我们秉持“最少化收集”的原则构建网站的基础设施。本隐私政策阐述了我们如何处理（或不处理）与您相关的个人信息。
+      </p>
+
+      <h2>1. 我们收集什么信息</h2>
+      <p>由于本博客是一个基于 Astro 构建的<strong>静态生成网站 (SSG)</strong>，我们不设置任何用户账户系统。因此，我们<strong>不会</strong>主动收集您的姓名、电子邮箱、真实地址或电话号码。</p>
+      <p>当您访问本网站时，我们可能会自动接收一些匿名的基础数据，例如：</p>
+      <ul>
+        <li>由 Cloudflare 或静态托管提供商（如 Vercel, Netlify, GitHub Pages）捕获的基础网络访问日志（IP 地址摘要、访问设备类型、浏览器版本等），仅用于防止网络攻击及维护站点的可用性。</li>
+        <li>若有开放评论系统，我们将采用 Github Issues 驱动的评论（如 Giscus）：任何您提交的信息都直接托管并受 制于 GitHub 的隐私协议。</li>
+      </ul>
+
+      <h2>2. Cookie 的使用</h2>
+      <p>
+        本网站本身的核心功能并不依赖复杂的跟踪 Cookie。你可能会遇到以下少量的功能性 Cookie 及本地存储（LocalStorage）：
+      </p>
+      <ul>
+        <li><strong>主题切换：</strong>我们会在您的浏览器中保存您对“深色/浅色模式”的偏好设置。</li>
+        <li><strong>本地搜索：</strong>我们的搜索索引仅通过 PageFind 运行在您的当前浏览器会话中，该搜索过程均在本地发生，我们无法监控您主动查询了哪些关键词。</li>
+      </ul>
+
+      <h2>3. 数据安全与出境</h2>
+      <p>
+        我们不在服务器层面储存任何可以唯一识别您的敏感用户数据，所有连接均通过 HTTPS 加密传输。由于本博客是去中心化的技术空间，部分流量可能经由国际内容分发网络（CDN）在全球范围进行流媒体边缘路由调度以进行加速。您应当了解现代互联网边缘计算架构的基础运转方针。
+      </p>
+
+      <h2>4. 第三方链接</h2>
+      <p>
+        您在查阅 Sing-box 客户端安装或配置文件生成工具时，可能点击跳转向第三方的 Github 仓库或开源社区网站。这些网站均有自己独立的隐私政策，在您离开本博客后，我们不对您的任何隐私负有追溯监控权利或义务。
+      </p>
+
+      <p class="mt-8 text-sm opacity-60">
+        最后更新时间：2026年3月8日
+      </p>
+    </div>
+  </Main>
+  <Footer />
+</Layout>

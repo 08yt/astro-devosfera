@@ -139,12 +139,7 @@ const totalPosts = page.total;
       if (signal.aborted || container.childElementCount > 0) return;
 
       if (import.meta.env.DEV) {
-        container.innerHTML = `
-          <div class="bg-muted/75 rounded p-4 text-sm mb-4 border border-border">
-            <p><strong>Dev Mode:</strong> 搜索将尝试使用最近构建的索引。如果看不到结果，请先运行 <code>pnpm run build</code>。</p>
-          </div>
-        `;
-        // Removed the early return to allow pagefind to attempt loading the local index
+        // Dev Mode logic intentionally skipped to silence the local search warning.
       }
 
       new PagefindUI({

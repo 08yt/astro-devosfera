@@ -1,0 +1,68 @@
+---
+title: "2026年最新 Sing-box 全平台小白完美入门指南"
+author: "毛佳国"
+pubDatetime: 2026-03-08T15:45:00.000+08:00
+featured: true
+draft: false
+tags:
+  - 基础入门
+  - Sing-box
+  - 客户端
+description: "从零开始认识 Sing-box 是什么、它的优势在哪。本教程手把手教你在 Windows、Mac、iOS、Android 端下载客户端并导入节点订阅，三分钟跑通科学上网环境。"
+---
+
+欢迎来到 **Sing-box** 的世界！如果你刚听说并且打算开始使用 Sing-box 作为你的核心代理工具，那么这篇文章正是为你量身打造的。
+
+## Table of contents
+
+## 为什么选择 Sing-box？
+
+Sing-box 被社区称为“下一代”代理平台，它不仅有着难以置信的跨平台一致性，还在资源占用方面做到了几乎变态的极致极致。作为“瑞士军刀”级别的全家桶工具，它的主要优势包括：
+
+1. **轻量与性能：** 用最少的内存跑满千兆带宽。
+2. **多协议原生支持：** 原生支持 VLESS、Trojan、Hysteria2、TUIC、Shadowsocks 等等，你不需要到处寻找乱七八糟的插件。
+3. **强大的路由：** 高度自定义的 JSON 配置可以实现国内外无缝分流、防止 DNS 泄漏、去除广告等等。
+
+![Sing-box 界面示例](/assets/your-placeholder-image.png)
+
+## 各平台客户端推荐与下载
+
+Sing-box 本身是一个内核工具，但各个平台社区涌现出了许多非常棒的图形化（GUI）客户端！
+
+### Windows 平台
+- **Sing-box Desktop (官方)** 
+  这是一款使用 Flutter 开发的官方 Windows 客户端，简洁流畅。
+- **推荐下载地址**: [GitHub Releases](https://github.com/SagerNet/sing-box/releases)
+
+### macOS 平台
+- **SFM (Sing-box for Mac)**
+  非常原生的 macOS 体验。
+- **配置要点**: 确保开启 TUN 虚拟网卡模式以代理全局流量。
+
+### iOS / iPadOS
+- **SFI体验非常完美**
+  目前需在外区 App Store 获取（搜索 Sing-box）。完全免费，支持 iCloud 多端同步。
+
+### Android
+- **SFA (Sing-box for Android)**
+  在 Google Play 或者项目 release 中可以直接获取 APK 文件安装，且完美支持 Android 的分应用代理能力（即只让指定 App 走代理）。
+
+## 如何导入订阅链接？（以 Windows 为例）
+
+对于绝大多数只会用“飞机杯”和“小火箭”的用户来说，在客户端里导入节点是唯一重要的一步。
+
+1. **启动程序**：打开你的 Sing-box 图形化界面。
+2. **找到 Profiles（配置管理）**：点击 "New Profile"（新建配置）。
+3. **导入链接**：将你的网络服务提供商（机场）给出的订阅地址填入 `Type: Remote`（远程）模式下的 URL 框中。
+4. **一键启动**：点击开始按钮。这时候 Sing-box 会自动建立一个虚拟网卡接管系统流量，你就可以畅游完全开放的互联网世界了！
+
+> **需要注意的是**：如果你的服务商没有提供原生的 Sing-box 订阅链接，请查阅我们的下一篇文章《将 Clash 订阅链接一键转换为 Sing-box 格式的 3 种方法》。
+
+<div className="border-l-4 border-accent bg-accent/8 p-6 my-8 rounded-r-xl">
+  <h4 className="font-bold text-foreground text-base m-0 mb-3 flex items-center gap-2">
+    💡 小贴士
+  </h4>
+  <p className="text-foreground/75 text-sm m-0 leading-relaxed">
+    如果你是拥有专属 VPS 的高阶玩家，请关注我们的 <strong>「服务器搭建」</strong> 标签，里面有硬核的服务端配置代码哦！
+  </p>
+</div>

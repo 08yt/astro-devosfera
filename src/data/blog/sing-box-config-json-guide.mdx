@@ -1,0 +1,102 @@
+---
+title: "Sing-box 配置文件 config.json 详解与基础语法解析"
+author: "毛佳国"
+pubDatetime: 2026-03-08T15:50:00.000+08:00
+featured: true
+draft: false
+tags:
+  - 基础入门
+  - Sing-box
+  - 配置详解
+description: "Sing-box 最让新手头疼的就是基于 JSON 格式的配置项。本文将把 inbounds（入站）、outbounds（出站）、route（路由）这三大核心模块用最简单的话讲透。"
+---
+
+很多刚接触 Sing-box 的朋友打开 `.json` 配置文件时，会被满屏幕的大括号 `{}` 吓退。
+
+不用担心！Sing-box 的配置其实非常有逻辑性。你可以把它想象成一个**物流集散中心**：
+1. **入站 (inbounds)**：包裹从哪里运进来？（比如从浏览器的代理端口进来）
+2. **路由 (route)**：根据包裹的目的地进行分拣。（是要发回国内，还是寄往国外？）
+3. **出站 (outbounds)**：包裹通过哪条运输线发出去？（直连发走，还是通过加密的代理节点发走？）
+
+## Table of contents
+
+## 配置文件的三大核心模块
+
+一个最小可运行的 Sing-box 配置结构是这样的：
+
+```json
+{
+  "inbounds": [],
+  "outbounds": [],
+  "route": {}
+}
+```
+
+### 1. 入站 (inbounds)：接管设备流量
+
+`inbounds` 用来定义我们如何把流量送进 Sing-box。最常见的做法是建立一个混合代理端口（支持 HTTP 和 SOCKS5）或者透明代理（TUN）。
+
+**示例：创建一个监听 2080 端口的混合接入口**
+
+```json
+"inbounds": [
+  {
+    "type": "mixed",
+    "tag": "mixed-in",
+    "listen": "127.0.0.1",
+    "listen_port": 2080
+  }
+]
+```
+这里的 `tag` 就像是这个入站口的“名字”，以后我们在看日志或做路由策略时，就会用到这个名字。
+
+### 2. 出站 (outbounds)：连接你的节点
+
+`outbounds` 就是你的“节点列表”。每个出站代理都需要包含目标服务器的地址、端口以及对应的加密认证信息。
+
+**示例：配置一个 VLESS 节点和一个直连出站**
+
+```json
+"outbounds": [
+  {
+    "type": "vless",
+    "tag": "proxy",
+    "server": "server.example.com",
+    "server_port": 443,
+    "uuid": "xxxxx-xxxxxx-xxxx-xxxxxx",
+    "tls": {
+      "enabled": true,
+      "server_name": "server.example.com"
+    }
+  },
+  {
+    "type": "direct",
+    "tag": "direct" // 用于不需要代理的流量
+  }
+]
+```
+请注意，列表中排在**第一个**的出站（通常是代理节点），就是默认出站规则。
+
+### 3. 路由 (route)：指挥棒
+
+这是 Sing-box 最强大的部分。通过设置规则，我们能让大陆的 IP 和域名走 `direct` 出站（不浪费海外服务器流量且访问速快），让其他的流量走 `proxy` 出站。
+
+```json
+"route": {
+  "rules": [
+    {
+      "geosite": "cn",
+      "geoip": "cn",
+      "outbound": "direct"
+    }
+  ],
+  "auto_detect_interface": true
+}
+```
+这段规则的意思非常直白：“如果目标域名是中国的（geosite: cn），或者 IP 是中国的（geoip: cn），请走名为 `direct` 的出站通道；不满足规则的，走默认通道。”
+
+## 总结
+
+你不需要手工敲击几千行的配置！大多数情况下，我们只需要理解这三大模块的作用。以后在使用各种配置生成器或者别人提供的模板时，如果遇到了问题或者想要做一点点修改，你就知道去哪里找了。
+
+> 我们在下一篇文章**《Sing-box 路由规则配置进阶：分流、屏蔽与按需代理实战》**中，会进一步带你体验 `route` 模块的终极威力。

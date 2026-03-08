@@ -1,0 +1,84 @@
+---
+title: "最新协议尝鲜：在 Sing-box 中配置 Hysteria2 或者 TUIC V5 协议的详细步骤"
+author: "毛佳国"
+pubDatetime: 2026-03-08T16:35:00.000+08:00
+featured: false
+draft: false
+tags:
+  - 服务器搭建
+  - 新协议
+description: "紧跟新协议热点，在拥挤的高峰期抢占带宽。教你在 Sing-box 中同时配置这两大 UDP 加速神器并测速对比。"
+---
+
+很多朋友觉得，“科学上网”速度慢是因为机场节点不够强、或者买的 VPS 线路不好（没走 CN2 GIA 高级路线）。
+
+其实，还有一种“物理外挂”能解救那些丢包严重的普通线路：那就是基于 UDP 开发的新一代抗跌穿协议：**Hysteria2** 与 **TUIC**。 
+
+得益于 Sing-box 全协议兼容的特性，我们不用再安装它们繁杂的官方核心，只需要像之前一样，在 JSON 配置文件里添加这么一小段，就能享受“暴力发包”的快感。
+
+## Table of contents
+
+## 为什么 UDP 协议比传统 TCP 快那么多？
+
+传统的 Shadowsocks 或 VLESS 代理走的通常是基于 TCP 的连接。TCP 讲究“有借有还，丢了就重传”的可靠握手。但在过境海缆这种复杂的长距离跨国网络中，每丢一次包都会让 TCP 速度大砍一截。这是因为 TCP 的拥塞控制机制认为：“线路堵了，我发慢点吧”。这叫传统阻塞算法的劣势。
+
+而基于 UDP 开发的这俩兄弟（Hysteria、TUIC），它们的设计更像高速路霸：“即使堵车了，我依然按最高速率狂发数据给你；如果丢了，我就疯狂补全”。
+这造就了这套协议能在晚高峰那些掉线率极高的普通 VPS 网络下，硬生生拉满你的手机带宽！
+
+## Hysteria2：残暴的宽带救星
+
+Hysteria（现在是V2版本）通过自定义拥塞控制在 UDP 上狂堆传输效率。
+
+### Sing-box 客戶端怎么连 Hysteria2？
+当你拿到了机场分享的 Hy2 参数（IP、端口和密码等）后，在 `outbounds` 里新增这一段即可连接：
+
+```json
+"outbounds": [
+  {
+    "type": "hysteria2",
+    "tag": "proxy-hy2",
+    "server": "us-hy2.example.com",     // 服务端 IP 或域名
+    "server_port": 8443,                // 开放的 UDP 端口
+    "up_mbps": 50,                      // 本地上传带宽（建议如实填写）
+    "down_mbps": 100,                   // 本地下载带宽上限
+    "password": "this-is-a-strong-password",
+    "tls": {
+      "enabled": true,
+      "server_name": "www.apple.com"    // SNI 伪装域名（如果遇到封锁可调整该值）
+    }
+  }
+]
+```
+
+## TUIC (V5)：基于 QUIC 的丝滑之选
+
+TUIC 是由一套被称为下一代网络标准 QUIC 改进而来的协议。与 Hysteria 的“狂放”不同，它更专注于 0-RTT（零往返时间建连）的极低延迟。
+在打开海外网页的瞬间，TUIC 的响应速度几乎无法察觉代理的存在。它的 V5 版本彻底消除了早期不稳定的 Bug，在 Sing-box 下同样完美支持。
+
+### Sing-box 客户端配置 TUIC V5：
+
+```json
+"outbounds": [
+  {
+    "type": "tuic",
+    "tag": "proxy-tuic",
+    "server": "hk-tuic.example.com",
+    "server_port": 8443,
+    "uuid": "xxxxx-xxxxxx-xxxx-xxxxxx",
+    "password": "mypassword",
+    "congestion_control": "bbr",         // 推荐开启 BBR 加速
+    "udp_relay_mode": "native",
+    "tls": {
+      "enabled": true,
+      "server_name": "example.com"
+    }
+  }
+]
+```
+
+## 到底选哪个好？一些实战建议
+
+这两者都是使用 UDP 的神器，在使用之前你必须在 VPS 供应商的防火墙面板里放行你的大端口。**记住：必须是放行 UDP 端口，不仅仅是 TCP！**
+
+- **追求稳定开网页**：由于 TUIC 基于成熟的 QUIC 标准网络，更温和稳定，推荐建站或全家翻墙使用。
+- **追求极速跑满下片/看4K**：只要运营商没有专门针对你的 UDP 进行“QoS (流量限制)”，Hysteria2 可以做到无视丢包。但如果你发现跑了几分钟突然断网几分钟，那一定是当地运营商看不下去帮你“掐线”了。这叫“UDP QoS”。遇到这个情况，请老实返回 VLESS 或使用 TUIC 进行平衡。

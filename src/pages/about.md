@@ -1,30 +1,26 @@
 ---
 layout: ../layouts/AboutLayout.astro
-title: "About"
+title: "关于作者"
 ---
 
-Bienvenido a mi rincón digital. Soy un **desarrollador** y **estudiante** apasionado por la tecnología, los videojuegos y construir cosas que vivan en internet.
+欢迎来到我的数字角落。我是 **毛佳国**，一个对网络协议、代理工具和代码充满热情的极客。
 
 ## 谁是我？
 
-我叫毛佳国，从我记事起，我就一直对事物的工作原理感到好奇——从小时候拆卸玩具到凌晨 2 点拆卸别人的代码。目前我在学习工程学，同时开发一些每天都在挑战我学习新事物的项目。
+我叫毛佳国，从我记事起，我就一直对事物的工作原理感到好奇——从小时候拆卸玩具到凌晨 2 点拆卸别人的代码。在这个网络连通受限、各种信息藩篱高筑的时代，我尤其喜欢研究各种能够打破封闭、还原互联网本来面貌的技术。
 
-Cuando no estoy programando, probablemente estoy en algún mundo virtual explorando mapas, completando misiones o compitiendo online. Los videojuegos no solo son mi hobby, también me enseñaron a resolver problemas, trabajar en equipo y, sobre todo, a no rendirme después del intento #847.
+目前我在学习前沿的计算机科学知识，同时开发和维护一些挑战我学习新事物的项目。
 
-## Lo que hago
+## 我在做什么
 
-- **Desarrollo web** — Me encanta construir experiencias web modernas con tecnologías como Astro, React, TypeScript y todo lo que el ecosistema JavaScript tiene para ofrecer.
-- **Open Source** — Creo en el poder del código abierto. Puedes encontrar mis proyectos en [GitHub](https://github.com/0xdres/).
-- **Aprendizaje continuo** — Siempre estoy explorando nuevas herramientas, frameworks y conceptos. La tecnología evoluciona rápido y me gusta ir al ritmo.
+- **协议探索** — 我是一个网络代理技术的深度发烧友，对 V2Ray、Xray，特别是近年来异军突起的 **Sing-box** 以及它背后的 TUIC、Hysteria 等协议有深度研究。
+- **技术分享** — 建立这个博客，初衷是因为我发现国内有太多“懂一点，但不多”的零散教程，而真正系统、结构化且适合小白入门的技术指南却少之又少。
+- **开源精神** — 我坚信开源的力量能够推动技术向善。在力所能及的范围内，我也乐于在开源社区贡献我的力量。
 
-## Gaming
+## 这个博客
 
-Los videojuegos son parte de mi ADN. Desde RPGs épicos hasta shooters competitivos, disfruto prácticamente cualquier género. Es ese espacio donde la creatividad se encuentra con la estrategia y la diversión pura.
+**Sing-box 教程指南** 诞生于我的一个小小愿望：希望能有一个一站式的站点，让任何一个刚接触科学上网的小白，都能在十分钟内搭建出最现代、最快速的专属网络环境；同时也能让那些高阶极客，在这里找到进阶的路由规则、防泄漏方案和自建服务端教程。
 
-## Este blog
+如果你在这找到了帮助，或者想和我交流任何技术问题，欢迎在社交平台与我连接！
 
-**Devosfera** nació como un espacio para documentar mi viaje como desarrollador, compartir lo que aprendo y conectar con personas que comparten las mismas pasiones. Aquí encontrarás posts sobre desarrollo, tecnología, y alguna que otra reflexión random de madrugada.
-
-Si quieres conectar, no dudes en encontrarme en [GitHub](https://github.com/0xdres/), [X](https://x.com/avdyen) o [LinkedIn](https://www.linkedin.com/in/avdyan/). Siempre es bueno conocer gente cool de la comunidad.
-
-> _"El código es poesía, pero con más puntos y comas."_ — Yo, probablemente
+> _“网络存在的意义，是让我们彼此相连，而不是建起高墙。”_

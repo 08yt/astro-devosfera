@@ -40,7 +40,7 @@ const { noMarginTop = false, class: className, ...attrs } = Astro.props;
         <p
           class="max-w-xs text-center font-cartograph text-[11px] leading-relaxed tracking-wide text-foreground/40 sm:text-start"
         >
-          好奇心化作代码的空间。
+          探索前沿协议，构筑极速极简的网络防泄漏环境。
         </p>
       </div>
 
@@ -76,13 +76,21 @@ const { noMarginTop = false, class: className, ...attrs } = Astro.props;
     </div>
 
     <div
-      class="mt-4 flex flex-col items-center justify-between gap-2 sm:flex-row"
+      class="mt-4 flex flex-col items-center justify-between gap-4 sm:flex-row"
     >
-      <p class="font-cartograph text-[11px] tracking-wide opacity-35">
-        &copy; {currentYear}
-        {SITE.title}。保留所有权利。
-      </p>
-      <p class="font-cartograph text-[11px] tracking-wide opacity-30">
+      <div class="flex flex-col items-center sm:items-start gap-1.5 cursor-default">
+        <p class="font-cartograph text-[11px] tracking-wide opacity-35">
+          &copy; {currentYear} {SITE.title}。保留所有权利。
+        </p>
+        <div class="flex items-center gap-3 font-cartograph text-[11px] opacity-40">
+          <a href="/disclaimer" class="hover:text-accent hover:opacity-100 transition-opacity">免责声明</a>
+          <span>·</span>
+          <a href="/terms" class="hover:text-accent hover:opacity-100 transition-opacity">服务条款</a>
+          <span>·</span>
+          <a href="/privacy" class="hover:text-accent hover:opacity-100 transition-opacity">隐私政策</a>
+        </div>
+      </div>
+      <p class="font-cartograph text-[11px] tracking-wide opacity-30 cursor-default mt-2 sm:mt-0">
         使用 <span class="text-accent">&#9829;</span> 制作，伴随许多咖啡
       </p>
     </div>

@@ -18,6 +18,10 @@ const isActive = (path: string) => {
   const currentPathArray = currentPath.split("/").filter(p => p.trim());
   const pathArray = path.split("/").filter(p => p.trim());
 
+  if (pathArray.length > 1) {
+    return currentPath === path || decodeURIComponent(currentPath) === path;
+  }
+
   return currentPath === path || currentPathArray[0] === pathArray[0];
 };
 ---
@@ -73,14 +77,35 @@ const isActive = (path: string) => {
             <a
               href="/posts"
               class:list={["nav-link", { "nav-active": isActive("/posts") }]}
-              >文章</a
+              >全部教程</a
+            >
+          </li>
+          <li>
+            <a
+              href="/tags/basics"
+              class:list={["nav-link", { "nav-active": isActive("/tags/basics") }]}
+              >基础入门</a
+            >
+          </li>
+          <li>
+            <a
+              href="/tags/server"
+              class:list={["nav-link", { "nav-active": isActive("/tags/server") }]}
+              >服务器搭建</a
+            >
+          </li>
+          <li>
+            <a
+              href="/tags/advanced"
+              class:list={["nav-link", { "nav-active": isActive("/tags/advanced") }]}
+              >规则进阶</a
             >
           </li>
           <li>
             <a
               href="/tags"
-              class:list={["nav-link", { "nav-active": isActive("/tags") }]}
-              >标签</a
+              class:list={["nav-link", { "nav-active": currentPath === "/tags" }]}
+              >更多</a
             >
           </li>
           <li>
@@ -188,23 +213,47 @@ const isActive = (path: string) => {
               style="--i:0"
             >
               <span class="mobile-nav-indicator"></span>
-              <span>文章</span>
+              <span>全部教程</span>
             </a>
             <a
-              href="/tags"
-              class:list={["mobile-nav-link", { active: isActive("/tags") }]}
+              href="/tags/basics"
+              class:list={["mobile-nav-link", { active: isActive("/tags/basics") }]}
               style="--i:1"
             >
               <span class="mobile-nav-indicator"></span>
-              <span>标签</span>
+              <span>基础入门</span>
+            </a>
+            <a
+              href="/tags/server"
+              class:list={["mobile-nav-link", { active: isActive("/tags/server") }]}
+              style="--i:2"
+            >
+              <span class="mobile-nav-indicator"></span>
+              <span>服务器搭建</span>
+            </a>
+            <a
+              href="/tags/advanced"
+              class:list={["mobile-nav-link", { active: isActive("/tags/advanced") }]}
+              style="--i:3"
+            >
+              <span class="mobile-nav-indicator"></span>
+              <span>规则进阶</span>
+            </a>
+            <a
+              href="/tags"
+              class:list={["mobile-nav-link", { active: currentPath === "/tags" }]}
+              style="--i:4"
+            >
+              <span class="mobile-nav-indicator"></span>
+              <span>更多标签</span>
             </a>
             <a
               href="/about"
               class:list={["mobile-nav-link", { active: isActive("/about") }]}
-              style="--i:2"
+              style="--i:5"
             >
               <span class="mobile-nav-indicator"></span>
-              <span>关于</span>
+              <span>关于作者</span>
             </a>
             {
               SITE.showArchives && (

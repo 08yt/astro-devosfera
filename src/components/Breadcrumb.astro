@@ -8,17 +8,38 @@ const breadcrumbList = currentUrlPath.split("/").slice(1);
 
 // if breadcrumb is Home > Posts > 1 <etc>
 // replace Posts with Posts (page number)
+const i18nMap: Record<string, string> = {
+  posts: "教程",
+  tags: "标签",
+  about: "关于作者",
+  search: "搜索",
+  archives: "归档",
+  galleries: "图集",
+  basics: "基础入门",
+  server: "服务器搭建",
+  advanced: "规则进阶",
+  clients: "客户端",
+  geek: "极客探索",
+  routing: "路由分流",
+  config: "配置详解",
+  convert: "配置转换",
+  protocols: "新协议",
+};
+
+// if breadcrumb is Home > Posts > 1 <etc>
+// replace Posts with Posts (page number)
 if (breadcrumbList[0] === "posts") {
-  breadcrumbList.splice(0, 2, `Posts (page ${breadcrumbList[1] || 1})`);
+  breadcrumbList.splice(0, 2, `教程 (第 ${breadcrumbList[1] || 1} 页)`);
 }
 
 // if breadcrumb is Home > Tags > [tag] > [page] <etc>
 // replace [tag] > [page] with [tag] (page number)
 if (breadcrumbList[0] === "tags" && !isNaN(Number(breadcrumbList[2]))) {
+  const tagName = i18nMap[breadcrumbList[1]] || decodeURIComponent(breadcrumbList[1]);
   breadcrumbList.splice(
     1,
     3,
-    `${breadcrumbList[1]} ${Number(breadcrumbList[2]) === 1 ? "" : "(page " + breadcrumbList[2] + ")"}`
+    `${tagName} ${Number(breadcrumbList[2]) === 1 ? "" : "(第 " + breadcrumbList[2] + " 页)"}`
   );
 }
 ---
@@ -29,13 +50,17 @@ if (breadcrumbList[0] === "tags" && !isNaN(Number(breadcrumbList[2]))) {
     <a
       href="/"
       class="breadcrumb-link inline-flex shrink-0 items-center justify-center rounded-md px-1.5 py-0.5 text-foreground/50 transition-colors duration-200 hover:bg-muted/10 hover:text-accent"
-      aria-label="Home"
-      title="Home"
+      aria-label="首页"
+      title="首页"
     >
       ~
     </a>
     {
-      breadcrumbList.map((breadcrumb, index) => (
+      breadcrumbList.map((breadcrumb, index) => {
+        const decoded = decodeURIComponent(breadcrumb);
+        const translated = i18nMap[decoded.toLowerCase()] || decoded;
+        
+        return (
         <>
           <span
             class="breadcrumb-sep shrink-0 text-accent/40"
@@ -47,23 +72,22 @@ if (breadcrumbList[0] === "tags" && !isNaN(Number(breadcrumbList[2]))) {
           {index + 1 === breadcrumbList.length ? (
             <span
               class:list={[
-                "breadcrumb-current truncate px-1.5 py-0.5 text-accent/90 capitalize",
-                { lowercase: index > 0 },
+                "breadcrumb-current truncate px-1.5 py-0.5 text-accent/90 capitalize"
               ]}
               aria-current="page"
             >
-              {decodeURIComponent(breadcrumb)}
+              {translated}
             </span>
           ) : (
             <a
               href={`/${breadcrumb}/`}
               class="breadcrumb-link shrink-0 rounded-md px-1.5 py-0.5 capitalize text-foreground/50 transition-colors duration-200 hover:bg-muted/10 hover:text-accent"
             >
-              {decodeURIComponent(breadcrumb)}
+              {translated}
             </a>
           )}
         </>
-      ))
+      )})
     }
   </div>
 </nav>

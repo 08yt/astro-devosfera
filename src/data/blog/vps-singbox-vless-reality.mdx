@@ -1,0 +1,96 @@
+---
+title: "VPS 主机从零部署 Sing-box 节点服务端实战（支持 VLESS+Reality）"
+author: "毛佳国"
+pubDatetime: 2026-03-08T16:20:00.000+08:00
+featured: false
+draft: false
+tags:
+  - 服务器搭建
+  - VLESS
+  - 极客探索
+description: "教用户如何在海外服务器上手动搭建服务端环境，提供 Docker 或者一键安装脚本的思路。实现基于 VLESS 和 Reality 的抗封锁节点。"
+---
+
+如果说使用别人提供的订阅叫“拎包入住”，那么拥有一台自己的 VPS 并搭建节点，就是自己“盖一栋抗震别墅”。 
+
+在如今的网络环境下，老旧的协议（如 Shadowsocks、VMess 等）很容易被识别和封锁。而 **VLESS+Reality** 因为其独特的“偷窥真实 TLS 握手”的设计，成为了抗封锁能力极强的前沿协议。本篇文章教你如何使用 Sing-box 作为服务端核心来部署它。
+
+## Table of contents
+
+## 环境准备工作的选择
+首先你需要拥有一台云主机（VPS）并拥有 `root` 权限。推荐安装较为现代的操作系统，比如 **Debian 12** 或 **Ubuntu 24.04**。
+
+## 方案一：使用一键安装脚本部署 (最适合小白)
+
+如果你是 Linux 新手，或者只是想迅速获得一个节点。很多大佬开源了优秀的后端安装脚本：
+1. 用 SSH 登录你的 VPS (`ssh root@ip`）
+2. 在终端执行一键部署命令，比如大家熟知的 [X-UI 衍生版] 或者某些 Sing-box 专项脚本。
+3. 按照命令的提示，选择你要部署的协议、端口和你的 UUID 等。
+
+其实我们更推荐的方式是深入了解，用方案二纯手工跑起来！
+
+## 方案二：通过 Docker 原生部署 Sing-box 核心配置
+
+Docker 的隔离性可以保证服务器纯净。
+
+### 1. 安装 Docker 并拉取镜像
+```bash
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+docker pull sagernet/sing-box:latest
+```
+
+### 2. 编写服务端配置文件 config.json
+在宿主机新建目录 `/etc/sing-box/` 并创建 `config.json`：
+```json
+{
+  "inbounds": [
+    {
+      "type": "vless",
+      "tag": "vless-reality-in",
+      "listen": "::",
+      "listen_port": 443,
+      "users": [
+        {
+          "uuid": "这里生成一个你自己的 UUID 字符串",
+          "flow": "xtls-rprx-vision"
+        }
+      ],
+      "tls": {
+        "enabled": true,
+        "server_name": "www.microsoft.com", 
+        "reality": {
+          "enabled": true,
+          "handshake": {
+            "server": "www.microsoft.com", // 伪装的域名，必须是真实支持 TLSv1.3 和 H2
+            "server_port": 443
+          },
+          "private_key": "这里用 sing-box generate reality-keypair 生成的私钥",
+          "short_id": ["你要设定的短ID"]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    { "type": "direct" }
+  ]
+}
+```
+
+### 3. 生成 Reality 所需密钥
+Reality 不再需要你购买域名和配置 SSL 证书！
+使用 `docker run --rm sagernet/sing-box generate reality-keypair` 来生成一对 `private_key` 和 `public_key`。
+并按照上方模板，把私钥填入配置，把公钥配置给你自己客户端用。
+
+### 4. 启动服务端
+```bash
+docker run -d \
+  --name sing-box \
+  -v /etc/sing-box:/etc/sing-box \
+  --network host \
+  --restart always \
+  sagernet/sing-box:latest run -c /etc/sing-box/config.json
+```
+
+恭喜！你拥有了一个无法轻易被探测到，安全性极高，并且占用内存只有不足 20MB 的全能服务端代理。
+现在，你可以把对应的客户端配置拼装起来，开始享受了！
