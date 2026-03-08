@@ -66,7 +66,7 @@ const folderImages: GalleryImage[] = Object.entries(allImages)
     const filename = path.split("/").pop() ?? "";
     return {
       src: mod.default,
-      alt: filenameToAlt(filename, entry?.data.title ?? slug),
+      alt: filenameToAlt(filename, (entry?.data.title as string) ?? slug),
     };
   });
 
@@ -87,8 +87,7 @@ const gridClass = {
 {
   !entry ? (
     <div class="ge-error">
-      ⚠️ Galería <code>{slug}</code> no encontrada. Verifica que exista{" "}
-      <code>src/data/galleries/{slug}/index.md</code>.
+      ⚠️ 找不到图集 <code>{slug}</code>。请检查 <code>src/data/galleries/{slug}/index.md</code> 是否存在。
     </div>
   ) : (
     <figure class="gallery-embed not-prose" data-gallery-embed={slug}>
@@ -112,7 +111,7 @@ const gridClass = {
           <rect x="14" y="14" width="7" height="7" rx="1" />
         </svg>
         <span class="ge-title">{entry.data.title}</span>
-        {remaining > 0 && <span class="ge-count">+{remaining} más</span>}
+        {remaining > 0 && <span class="ge-count">+ {remaining} 更多</span>}
       </div>
 
       {/* Grid de imágenes */}
@@ -128,7 +127,7 @@ const gridClass = {
                 class="ge-item group"
                 data-lb={lbId}
                 data-index={idx}
-                aria-label={`Ver imagen: ${img.alt}`}
+                aria-label={`查看图片: ${img.alt}`}
                 type="button"
               >
                 <Image
@@ -147,7 +146,7 @@ const gridClass = {
           ))}
         </ul>
       ) : (
-        <p class="ge-empty">Esta galería todavía no tiene imágenes.</p>
+        <p class="ge-empty">此图集暂无图片。</p>
       )}
 
       {/* Pie: descripción + enlace a la galería completa */}
@@ -157,7 +156,7 @@ const gridClass = {
         )}
         {showLink && (
           <a href={`/galleries/${slug}`} class="ge-link">
-            Ver galería completa
+            查看完整图集
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="14"
@@ -183,13 +182,13 @@ const gridClass = {
 <dialog
   id={lbId}
   class="ge-lightbox"
-  aria-label={`Visor: ${entry?.data.title ?? slug}`}
+  aria-label={`图片查看器: ${entry?.data.title ?? slug}`}
   aria-modal="true"
 >
   <button
     class="ge-lb-close"
     data-lb-close={lbId}
-    aria-label="Cerrar"
+    aria-label="关闭"
     type="button"
   >
     <svg
@@ -210,7 +209,7 @@ const gridClass = {
   <button
     class="ge-lb-nav ge-lb-prev"
     data-lb-prev={lbId}
-    aria-label="Anterior"
+    aria-label="上一张"
     type="button"
   >
     <svg
@@ -235,7 +234,7 @@ const gridClass = {
   <button
     class="ge-lb-nav ge-lb-next"
     data-lb-next={lbId}
-    aria-label="Siguiente"
+    aria-label="下一张"
     type="button"
   >
     <svg

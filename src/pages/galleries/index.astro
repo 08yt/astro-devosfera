@@ -71,15 +71,15 @@ const galleries = rawGalleries
       <div class="aurora-mouse" data-archive-mouse></div>
       <div class="relative z-10">
         <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">
-          <span class="glow-text">Galerías</span>
+          <span class="glow-text">图集</span>
         </h1>
         <p class="mt-3 max-w-lg text-foreground/70 italic">
-          Colecciones de imágenes para compartir momentos y proyectos.
+          分享精彩瞬间和项目的图片集。
         </p>
         <div class="mt-4 flex flex-wrap items-center gap-2">
           <span class="hero-badge"
             >{galleries.length}
-            {galleries.length === 1 ? "galería" : "galerías"}</span
+            个图集</span
           >
         </div>
       </div>
@@ -89,7 +89,7 @@ const galleries = rawGalleries
     {
       galleries.length === 0 ? (
         <p class="mt-12 text-center text-foreground/50 italic">
-          Todavía no hay galerías publicadas.
+          暂未发布任何图集。
         </p>
       ) : (
         <ul

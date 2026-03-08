@@ -73,28 +73,28 @@ const isActive = (path: string) => {
             <a
               href="/posts"
               class:list={["nav-link", { "nav-active": isActive("/posts") }]}
-              >Posts</a
+              >文章</a
             >
           </li>
           <li>
             <a
               href="/tags"
               class:list={["nav-link", { "nav-active": isActive("/tags") }]}
-              >Tags</a
+              >标签</a
             >
           </li>
           <li>
             <a
               href="/about"
               class:list={["nav-link", { "nav-active": isActive("/about") }]}
-              >About</a
+              >关于</a
             >
           </li>
           <li class="flex items-center">
             <a
               href="/search"
               class:list={["nav-link", { "nav-active": isActive("/search") }]}
-              title="Ir a búsqueda">Search</a
+              title="前往搜索">搜索</a
             >
           </li>
           {
@@ -106,11 +106,11 @@ const isActive = (path: string) => {
                     "nav-link",
                     { "nav-active": isActive("/archives") },
                   ]}
-                  title="Archives"
+                  title="归档"
                   aria-label="archives"
                 >
                   <IconArchive class="hidden sm:inline-block" />
-                  <span class="sm:sr-only">Archives</span>
+                  <span class="sm:sr-only">归档</span>
                 </LinkButton>
               </li>
             )
@@ -124,11 +124,11 @@ const isActive = (path: string) => {
                     "nav-link",
                     { "nav-active": isActive("/galleries") },
                   ]}
-                  title="Galerías"
+                  title="图集"
                   aria-label="galleries"
                 >
                   <IconGallery class="hidden sm:inline-block" />
-                  <span class="sm:sr-only">Galerías</span>
+                  <span class="sm:sr-only">图集</span>
                 </LinkButton>
               </li>
             )
@@ -143,8 +143,8 @@ const isActive = (path: string) => {
             <button
               data-search-trigger
               class="nav-search-btn"
-              title="Buscar (⌘K)"
-              aria-label="Abrir búsqueda"
+              title="搜索 (⌘K)"
+              aria-label="打开搜索"
               aria-keyshortcuts="Meta+K"
             >
               <IconSearch class="size-4.5" />
@@ -157,7 +157,7 @@ const isActive = (path: string) => {
                 <button
                   id="theme-btn"
                   class="nav-icon-btn relative"
-                  title="Toggles light & dark"
+                  title="切换主题"
                   aria-label="auto"
                   aria-live="polite"
                 >
@@ -188,7 +188,7 @@ const isActive = (path: string) => {
               style="--i:0"
             >
               <span class="mobile-nav-indicator"></span>
-              <span>Posts</span>
+              <span>文章</span>
             </a>
             <a
               href="/tags"
@@ -196,7 +196,7 @@ const isActive = (path: string) => {
               style="--i:1"
             >
               <span class="mobile-nav-indicator"></span>
-              <span>Tags</span>
+              <span>标签</span>
             </a>
             <a
               href="/about"
@@ -204,7 +204,7 @@ const isActive = (path: string) => {
               style="--i:2"
             >
               <span class="mobile-nav-indicator"></span>
-              <span>About</span>
+              <span>关于</span>
             </a>
             {
               SITE.showArchives && (
@@ -217,7 +217,7 @@ const isActive = (path: string) => {
                   style="--i:3"
                 >
                   <span class="mobile-nav-indicator" />
-                  <span>Archives</span>
+                  <span>归档</span>
                 </a>
               )
             }
@@ -232,7 +232,7 @@ const isActive = (path: string) => {
                   style="--i:4"
                 >
                   <span class="mobile-nav-indicator" />
-                  <span>Galerías</span>
+                  <span>图集</span>
                 </a>
               )
             }
@@ -246,25 +246,25 @@ const isActive = (path: string) => {
             <button
               data-search-trigger
               class="mobile-action-btn flex-1 justify-center"
-              title="Buscar (⌘K)"
-              aria-label="Abrir búsqueda"
+              title="搜索 (⌘K)"
+              aria-label="打开搜索"
             >
               <IconSearch class="size-4" />
-              <span>Search</span>
+              <span>搜索</span>
             </button>
             {
               SITE.lightAndDarkMode && (
                 <button
                   id="theme-btn-mobile"
                   class="mobile-action-btn flex-1 justify-center"
-                  title="Cambiar tema"
+                  title="切换主题"
                   aria-label="auto"
                   aria-live="polite"
                 >
                   <IconMoon class="block size-4 dark:hidden" />
                   <IconSunHigh class="hidden size-4 dark:block" />
-                  <span class="block dark:hidden">Dark mode</span>
-                  <span class="hidden dark:block">Light mode</span>
+                  <span class="block dark:hidden">暗色模式</span>
+                  <span class="hidden dark:block">亮色模式</span>
                 </button>
               )
             }
