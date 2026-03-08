@@ -5,9 +5,9 @@ title: "About"
 
 Bienvenido a mi rincón digital. Soy un **desarrollador** y **estudiante** apasionado por la tecnología, los videojuegos y construir cosas que vivan en internet.
 
-## ¿Quién soy?
+## 谁是我？
 
-Me llamo Andrés, y desde que recuerdo siempre tuve curiosidad por entender cómo funcionan las cosas — desde desarmar juguetes de niño hasta desarmar código ajeno a las 2 AM. Actualmente estudio ingeniería mientras desarrollo proyectos que me retan a aprender algo nuevo cada día.
+我叫毛佳国，从我记事起，我就一直对事物的工作原理感到好奇——从小时候拆卸玩具到凌晨 2 点拆卸别人的代码。目前我在学习工程学，同时开发一些每天都在挑战我学习新事物的项目。
 
 Cuando no estoy programando, probablemente estoy en algún mundo virtual explorando mapas, completando misiones o compitiendo online. Los videojuegos no solo son mi hobby, también me enseñaron a resolver problemas, trabajar en equipo y, sobre todo, a no rendirme después del intento #847.
 

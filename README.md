@@ -2,7 +2,7 @@
 
 Heavily customized version of the [AstroPaper](https://github.com/satnaing/astro-paper) theme with a **Terminal/Cyberpunk** aesthetic, image galleries, global search modal, and dozens of visual and interactive improvements.
 
-**🌐 Live demo:** [devosfera.vercel.app](https://devosfera.vercel.app)
+**🌐 Live demo:** [singbox.eu.cc](https://singbox.eu.cc)
 
 ![Devosfera OG](public/devosfera-og.webp)
 
@@ -260,8 +260,8 @@ All site configuration lives in `src/config.ts` (the `SITE` constant):
 
 ```ts
 export const SITE = {
-  website: "https://devosfera.vercel.app/",
-  author: "Andrés",
+  website: "https://singbox.eu.cc/",
+  author: "毛佳国",
   desc: "A space where curiosity turns into code",
   title: "Devosfera",
   timezone: "America/Guatemala",  // default timezone for posts

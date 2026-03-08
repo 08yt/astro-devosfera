@@ -343,7 +343,7 @@ Complete hero redesign with interactive effects:
 
 ### Content (`about.md`)
 
-Rewritten from default AstroPaper template to personalized content as Andrés:
+Rewritten from default AstroPaper template to personalized content as 毛佳国:
 
 - Introduction as developer, student, and gamer.
 - Sections: ¿Quién soy?, Lo que hago (web dev, open source, continuous learning), Gaming, Este blog (Devosfera purpose).
