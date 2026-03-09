@@ -1,0 +1,96 @@
+---
+title: "Sing-box 自定义规则集 (.srs) 编译与使用进阶教程"
+author: "毛佳国"
+pubDatetime: 2026-03-09T11:45:00.000+08:00
+featured: false
+draft: false
+tags:
+  - 进阶教程
+  - Sing-box
+  - 路由规则
+description: "Sing-box 放弃了 V2ray 遗留的 .dat 格式，转向使用高效率的二进制规则集 (SRS)。本文将带你了解如何编译自己的 srs 文件，实现精细化分流。"
+---
+
+在使用传统的 Clash 或 V2ray 时，我们往往习惯了 `geoip.dat` 和 `geosite.dat`。但在 Sing-box 的快速迭代中，官方引入了一种更为极客、加载更快、内存占用更低的底层二进制格式——**SRS (Sing-box Rule Set)**。
+
+许多高阶用户会有自己的特殊分流需求：比如把公司内网 IP 强制直连、把某几个特定小众网站强制走代理等。这时候，我们就需要自己编写并编译 `.srs` 规则文件。
+
+## YAML 源码格式解析
+
+在被编译成二进制的 `.srs` 文件之前，规则集是以人类可读的 **JSON** 或 **YAML** 格式编写的，Sing-box 官方推荐我们使用可读性更好的 YAML 进行维护。
+
+最基础的源文件内容结构有两种主要模式：**无头规则结构**（Headless Rule）。以下是一个名为 `my_custom_direct.yaml` 的例子，我们准备把这几个特定域名加入白名单：
+
+```yaml
+version: 1
+rules:
+  - domain:
+      - "company-internal.com"
+      - "my-personal-nas.local"
+    domain_suffix:
+      - ".edu.cn"
+      - ".gov.cn"
+    ip_cidr:
+      - "192.168.100.0/24"
+```
+
+## 编译过程 (Compile)
+
+有了 `.yaml` 的源文件以后，为了让 Sing-box 客户端能够高效读取，我们需要将它编译为 `.srs` 格式。
+
+你需要在你的电脑上安装好原版 `sing-box` 核心命令行工具，然后执行：
+
+```bash
+sing-box rule-set compile ./my_custom_direct.yaml -o my_custom_direct.srs
+```
+
+执行完毕后，你会在当前目录下得到一个名为 `my_custom_direct.srs` 的文件。它的体积会比原 YAML 小很多，且加载速度呈指数级提升。
+
+## 在配置中引用 SRS 规则集
+
+现在我们把编译好的 `my_custom_direct.srs` 放到设备的任意目录，接着我们在 Sing-box 的主配置文件 `config.json` 的 `route` 模块中引入它：
+
+```json
+{
+  "route": {
+    "rule_set": [
+      {
+        "tag": "custom-direct-rules",
+        "type": "local",
+        "format": "binary",
+        "path": "规则存放绝对路径/my_custom_direct.srs"
+      }
+    ],
+    "rules": [
+      {
+        "rule_set": "custom-direct-rules",
+        "outbound": "direct"
+      }
+    ]
+  }
+}
+```
+
+### 解析
+
+1. **`rule_set` 声明区**：在 route 最上方，我们先“加注”了这个本地的规则集，它的 `type` 设置为 `local`（如果是网络下载就设为 `remote`），`format` 选择 `binary` (二进制)。
+2. **`rules` 使用区**：在具体的路由分拣流水线上，当流量命中了 `custom-direct-rules` 标签的内容时，就让它走到 `direct` 出站。
+
+## 远端规则 (Remote Rule Set) 的优势
+
+如果你手边有多个设备 (手机、电脑、软路由) 都需要同步同一套规则，每次本地编译完再发到各个设备显然不现实。此时，你可以将变异好的 `srs` 文件放到 GitHub Pages 或者自己的个人网站上，然后使用 Remote 方式。
+
+```json
+{
+  "tag": "custom-direct-rules",
+  "type": "remote",
+  "format": "binary",
+  "url": "https://your-domain.com/my_custom_direct.srs",
+  "download_detour": "proxy", // 强制让下载规则集的流量走代理出站，防止被墙
+  "update_interval": "24h" // 每24小时自动更新
+}
+```
+
+## 结语
+
+掌握 `.srs` 的编译和引用，标志着你已从一个普通的翻墙用户，进阶成为一名掌握底层分流策略的网络调度官。告别臃肿的默认规则表，按你的自身使用模式精简自己的专属 SRS，将让 Sing-box 的性能表现达到极致。

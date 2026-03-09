@@ -1,0 +1,128 @@
+---
+title: "拯救被墙 IP：Sing-box 搭配 Cloudflare CDN 与 WebSocket 实战教程"
+author: "毛佳国"
+pubDatetime: 2026-03-09T11:55:00.000+08:00
+featured: true
+draft: false
+tags:
+  - 进阶教程
+  - Sing-box
+  - Cloudflare
+  - 被墙解救
+description: "VPS IP 被墙了怎么救？通过 Sing-box 配合 WebSocket 协议并套用 Cloudflare CDN，复活你的受限节点并隐藏真实 IP。"
+---
+
+很多朋友在购买便宜的海外 VPS 后，常常会遇到“开局 IP 就不通”或者“用着用着突然连不上”的窘境。遇到这种 IP 被 TCP 阻断（俗称“被墙”）的情况，最经典的解法就是：**套 CDN**。
+
+目前免费且好用的 CDN 首推 Cloudflare。由于 Cloudflare 不支持纯粹的 TCP 中转代理（如原版 VLESS 或 Trojan），我们需要借助 **WebSocket (WS)** 或 **gRPC** 协议将流量伪装成正常的网页访问，从而穿透防火墙并被 Cloudflare 的 CDN 节点集群成功代理。
+
+## 核心原理
+
+原本你的连接方式是：
+`你的设备` \-\> `墙` \-\> `VPS (真实 IP，已屏蔽)` ❌
+
+套用 Cloudflare (CF) + WebSocket (WS) 后的连接方式变成了：
+`你的设备` \-\> `墙` \-\> `Cloudflare 边缘节点 (干净的 IP)` \-\> `回源并中转` \-\> `VPS (真实 IP)` ✅
+
+这相当于让 Cloudflare 帮你当了一回跳板。在这个过程中，不仅复活了被墙的 VPS，还**隐藏了你 VPS 的真实 IP**。
+
+## 第一步：准备一个域名并托管到 Cloudflare
+
+由于必须依赖一个域名才能开启 CDN 代理加速，你需要：
+1. 拥有一个任意后缀的域名。
+2. 将该域名的 NS (NameServer) 记录修改为 Cloudflare 指定的服务器，使其完全托管在 Cloudflare 平台下。
+3. 在 Cloudflare 的「DNS」面板中，添加一个 `A 记录`。
+   * **名称**: 例如填 `ws` (那么完整域名就是 `ws.yourdomain.com`)
+   * **IPv4 地址**: 填写你那台**被墙的 VPS 的地址**。
+   * **代理状态 (Proxy status)**: **一定要开启那个橙色的云朵图标**（Proxied）。
+
+## 第二步：配置 Sing-box 服务端 (WebSocket)
+
+登录到你的 VPS。为了让 CDN 能接管流量，我们需要监听一个标准的 Web 端口（目前免备案最常用的是 CDN 支持的加密端口 `443` 或 `8443`，以及不加密端口 `80`。教程以 VLESS + WS 裸协议通过 80 端口走 CDN 中转为例，降低证书配置难度，由 CF 完成前端加解密）：
+
+*注意：此配置非常基础，仅适用于套 CDN 的场景，此时 TLS 证书交由云端的 Cloudflare 签发，VPS 到 CF 之间走的是不加密 HTTP 流量 (Flexible 模式)。*
+
+在服务端的 `config.json` 中，配置如下 `inbounds`：
+
+```json
+{
+  "log": {
+    "level": "info"
+  },
+  "inbounds": [
+    {
+      "type": "vless",
+      "tag": "vless-ws-in",
+      "listen": "::",
+      "listen_port": 80, 
+      "users": [
+        {
+          "uuid": "这里填写生成好的 UUID",
+          "flow": "" // 注意 WebSocket 不能使用 xtls-rprx-vision
+        }
+      ],
+      "transport": {
+        "type": "ws",
+        "path": "/mysecretpath", // 你自定义的一个隐蔽路径
+        "max_early_data": 2048,
+        "early_data_header_name": "Sec-WebSocket-Protocol"
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}
+```
+
+**关键点：**
+- `listen_port`: 设置成了 `80`。
+- `transport`: 指定了传输协议是 `ws`，并设定了路径为 `/mysecretpath`（一定要复杂一些，防止被主动探测）。
+
+## 第三步：设置 Cloudflare 的 SSL/TLS 模式
+
+进入 Cloudflare 面板针对该域名的「SSL/TLS」设置，将加密模式改为 **“灵活 (Flexible)”**。
+
+> **为什么选灵活？**
+> 因为在上面的配置文件中，我们的服务器端只开放了 80 端口且没有配置本地的 TLS 证书。此时：客户端 \-\> CF 之间是有小黄云(HTTPS)加密的；但 CF 节点回源到您的 VPS 之间，走的是 80 端口明文。这种配置最简单且完全能跑通（适合初学者拯救垃圾 IP）。如果你会配置 Nginx 反代加申请 SSL 证书，也可以选“完全(严格)”并开启服务端证书。
+
+## 第四步：编写客户端的出站配置
+
+在你的 Sing-box 客户端，加入对应的 `outbounds` 节点配置：
+
+```json
+{
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "cloudflare-ws-proxy",
+      "server": "ws.yourdomain.com", // 填写套了 CF 小黄云的域名
+      "server_port": 443, // 这里填 443，由于是 Flexible 模式，CF 会把 443 的请求转给 VPS 的 80 端口
+      "uuid": "刚才服务端的 UUID",
+      "tls": {
+        "enabled": true, // 必须为 true，因为客户端到 CF 节点是 HTTPS 加密的
+        "server_name": "ws.yourdomain.com",
+        "insecure": false
+      },
+      "transport": {
+        "type": "ws",
+        "path": "/mysecretpath", // 和服务端完全一致的路径
+        "headers": {
+          "Host": "ws.yourdomain.com"
+        }
+      }
+    }
+  ]
+}
+```
+
+## 测试与优化 (Cloudflare 优选 IP)
+
+启动服务端和客户端后，如果发现虽然能连上，但晚高峰速度像龟爬一样慢？
+
+由于 Cloudflare 默认分配给你的 CDN 接入 IP 在国内往往拥堵严重，这时候你可以使用网上的 **Cloudflare 优选 IP 工具**（如 `CloudflareST`），选出一个当前时段相对不拥堵的 IP 地址，将客户端的 `server` 字段强行替换为这个 IP，但保持 `tls.server_name` 和 `transport.headers.Host` 为你的域名即可实现提速！
+
+大功告成，享受你的“复活”服务器吧！

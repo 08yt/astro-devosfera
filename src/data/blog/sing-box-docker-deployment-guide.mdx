@@ -1,0 +1,147 @@
+---
+title: "在 VPS 上使用 Docker 一键部署 Sing-box 服务端"
+author: "毛佳国"
+pubDatetime: 2026-03-09T11:40:00.000+08:00
+featured: true
+draft: false
+tags:
+  - 进阶教程
+  - Sing-box
+  - Docker
+  - 服务端部署
+description: "通过 Docker 部署 Sing-box 服务端是目前最推荐、最干净的方案。本文将教你如何编写 docker-compose.yml 并快速启动一个高性能节点。"
+---
+
+很多用户在拥有了一台属于自己的 VPS（虚拟专用服务器）后，面临的第一个问题就是：如何干净、优雅地部署 Sing-box 服务端？
+
+相较于一键脚本经常带来系统环境污染和依赖冲突问题，**使用 Docker 容器化部署**是目前最受高阶玩家推崇的方式。它不仅让安装与卸载如行云流水，还极其方便后续的版本升级和配置迁移。
+
+## 环境准备
+
+在开始之前，确保你的 VPS 已经安装了 Docker 和 Docker Compose：
+
+```bash
+# 自动安装 Docker
+curl -fsSL https://get.docker.com | bash -s docker
+# 更新并启用服务
+systemctl enable --now docker
+```
+
+## 目录结构设计
+
+为了让配置和后续管理更方便，我们建议创建一个专门的路径来统一存放配置文件：
+
+```bash
+mkdir -p /root/singbox && cd /root/singbox
+```
+
+我们的目标目录结构如下：
+```text
+/root/singbox
+├── docker-compose.yml   # Docker 配置文件
+└── config.json          # Sing-box 服务端配置
+```
+
+## 编写 docker-compose.yml
+
+在 `singbox` 目录下新建 `docker-compose.yml` 文件：
+
+```yaml
+version: '3'
+
+services:
+  sing-box:
+    image: ghcr.io/sagernet/sing-box:latest
+    container_name: sing-box
+    restart: always
+    network_mode: "host" # 推荐使用 host 模式提升网络性能
+    volumes:
+      - ./config.json:/etc/sing-box/config.json
+    cap_add:
+      - NET_ADMIN # 必须，用于处理 TProxy 等高级路由
+```
+
+**为什么推荐 `network_mode: "host"`？**
+使用 host 模式可以省去在 docker vswitch 中进行端口映射 (NAT) 的损耗，对于代理服务器这种对网络 I/O 要求极高的应用来说，是大幅提升吞吐量的关键。
+
+## 准备服务端配置 (config.json)
+
+接下来是核心的服务端 `config.json`。这个配置文件主要定义作为服务端的**入站（inbounds）**。
+
+下面是一个基础的 VLESS + TCP + Reality 示例：
+
+```json
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "vless",
+      "tag": "vless-in",
+      "listen": "::",
+      "listen_port": 443,
+      "users": [
+        {
+          "uuid": "这里填写你生成的 UUID",
+          "flow": "xtls-rprx-vision"
+        }
+      ],
+      "tls": {
+        "enabled": true,
+        "server_name": "www.microsoft.com",
+        "reality": {
+          "enabled": true,
+          "handshake": {
+            "server": "www.microsoft.com",
+            "server_port": 443
+          },
+          "private_key": "这里填写生成的 Reality 私钥",
+          "short_id": [
+            "填写生成的 Short ID"
+          ]
+        }
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}
+```
+
+> **提示**：如果你还不知道如何生成 UUID 和 Reality 密钥对，可以使用 `sing-box generate uuid` 和 `sing-box generate reality-keypair` 命令生成。
+
+## 启动与维护
+
+确认文件都在同一个目录下后，执行以下命令即可启动 Sing-box 服务端：
+
+```bash
+docker-compose up -d
+```
+
+### 查看运行日志
+
+如果遇到无法连接的问题，第一步应该查看日志：
+
+```bash
+docker logs -f sing-box
+```
+
+### 版本更新
+
+未来当你需要升级 Sing-box 时，只需执行这三步：
+
+```bash
+docker-compose pull
+docker-compose down
+docker-compose up -d
+```
+
+## 结语
+
+使用 Docker 部署是目前维护成本最低的选择。当你掌握了上游服务端的搭建后，配合我们博客中分享的各种客户端配置教程，你将能打造出一个纯粹属于自己的定制化代理网络。
