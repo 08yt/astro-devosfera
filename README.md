@@ -1,4 +1,18 @@
-# Devosfera Blog
+# Sing-box 教程指南 - 静态博客项目
+
+这是一个基于 Astro 构建的专注于 [Sing-box](https://sing-box.sagernet.org/) 使用教程与配置分享的快速静态博客。
+
+👉 **[点击这里访问在线博客站点阅读教程：https://singbox.eu.cc/](https://singbox.eu.cc/)**
+
+我们的愿景是降低 Sing-box 这个号称“最强瑞士军刀”代理核心的学习门槛。通过提供从零开始的各种客户端教学、服务端 Docker 搭建脚本指引配合 Cloudflare 拯救 IP 的系列图文，帮助所有中文用户体验丝滑的网络环境保障！
+
+## 🤔 为什么要做这个项目？
+
+Sing-box 由于舍弃了旧版的 dat 规则集，转而采用二进制的高性能 srs 和基于 JSON 的庞大配置文件，使很多新手望而生畏。本项目希望用最通俗易懂的方式，通过高质量的长文，帮助大家搞定它。
+
+---
+
+## 🛠 技术底层 (Original Project Info)
 
 Heavily customized version of the [AstroPaper](https://github.com/satnaing/astro-paper) theme with a **Terminal/Cyberpunk** aesthetic, image galleries, global search modal, and dozens of visual and interactive improvements.
 
@@ -319,4 +333,4 @@ Bugs and feature requests from the official [AstroPaper](https://github.com/satn
 ## 📜 License
 
 Based on [AstroPaper](https://github.com/satnaing/astro-paper) by [Sat Naing](https://satnaing.dev), licensed under MIT.
-Customizations © 0xdres.
+Customizations © 08yt.
