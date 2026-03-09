@@ -1,0 +1,112 @@
+---
+title: "抛弃 Nginx：使用 Traefik 作为 Docker 的完美反向代理与自动化 HTTPS"
+author: "毛佳国"
+pubDatetime: 2026-03-09T14:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - 运维自动化
+  - Docker
+  - Traefik
+  - VPS
+description: "对于喜欢在 VPS 上部署各类 Docker 服务的玩家来说，手动配 Nginx 和申请 SSL 证书太痛苦了。Traefik 是你的最终答案。"
+---
+
+如果你有一台 VPS，并且像我一样喜欢在上面用 Docker 部署各种好玩的开源服务（比如：Bitwarden、Nextcloud、青龙面板、Alist 等等）。随着服务越来越多，你会面临两个极其头痛的问题：
+
+1. **端口冲突与记忆灾难**：A 占用 8080，B 占用 3000，C 占用 8090... 每次访问都要加端口号。
+2. **HTTPS 证书维护**：各种服务都是 HTTP 明文传输，不仅浏览器一直报“不安全”，密码还容易被劫持。每次增加新服务，都要用 `certbot` 申请证书，然后再打开 Nginx 的配置文件写一大堆 `proxy_pass`。
+
+**别折腾 Nginx 了，拥抱 Traefik 吧！**
+
+## Traefik 是什么？
+
+Traefik (发音：Traffic) 是一个现代的 HTTP 反向代理和负载均衡器。它最大的魔法在于：**服务自动发现**。
+
+当 Traefik 运行在你的 Docker 环境中时，它会实时监听 Docker API。只要你启动了一个新的容器，并在它的 `docker-compose.yml` 中加上几行简单的 `labels`，Traefik 就会瞬间捕获它，自动为你：
+* 配置好 `sub.yourdomain.com` 的路由。
+* 自动向 Let's Encrypt 申请泛域名或单域名证书。
+* 自动续期，零人工干预！
+
+## 第一步：启动 Traefik 基础设施
+
+我们需要创建一个网络供所有需要反代的容器互通：
+```bash
+docker network create web
+```
+
+然后在 `/root/traefik` 目录下创建 `docker-compose.yml`：
+
+```yaml
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik
+    restart: always
+    ports:
+      - "80:80"     # 暴露 HTTP 端口
+      - "443:443"   # 暴露 HTTPS 端口
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro # 监听 Docker 事件
+      - ./acme.json:/acme.json # 保存 SSL 证书
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      # 全局重定向 HTTP 到 HTTPS
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      # 配置 SSL 证书解析器
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=your-email@example.com" # 换成你的邮箱
+      - "--certificatesresolvers.myresolver.acme.storage=/acme.json"
+    networks:
+      - web
+
+networks:
+  web:
+    external: true
+```
+
+*注意：在启动前，必须建一行空文件并设置极高权限供其存证书：*
+```bash
+touch acme.json
+chmod 600 acme.json
+docker-compose up -d
+```
+
+## 第二步：一键对接任何其他服务 (以 Whoami 为例)
+
+假如我们现在想要跑一个测试网页面板（镜像为 `containous/whoami` 这个用来测试的小网页）。
+
+你只需要在这个新容器的 `docker-compose.yml` 中加上 `labels` 标签。完全不需要触碰任何 Traefik 或者 Nginx 的配置！
+
+```yaml
+version: '3'
+
+services:
+  whoami:
+    image: containous/whoami
+    container_name: whoami
+    networks:
+      - web # 必须加入同一个网络
+    labels:
+      - "traefik.enable=true" # 告诉 Traefik：接管我！
+      - "traefik.http.routers.whoami.rule=Host(`whoami.yourdomain.com`)" # 定义它的域名
+      - "traefik.http.routers.whoami.entrypoints=websecure"
+      - "traefik.http.routers.whoami.tls.certresolver=myresolver" # 自动搞定 HTTPS
+```
+
+使用 `docker-compose up -d` 启动它之后。你只需要在 DNS 服务商（如 Cloudflare）把 `whoami.yourdomain.com` 指向你的 VPS 即可。
+
+三十秒后，你在浏览器输入 `https://whoami.yourdomain.com`，神奇的事情发生了！你会发现不仅网页能成功打开，而且浏览器左上角已经出现了一把晶莹剔透的小锁图标（安全 HTTPS）。
+
+全程 **0 配置文件修改，0 手动申请证书**。
+
+## 结语
+
+在习惯了 Traefik 的微服务编排逻辑后，你会发现整个 VPS 变得异常纯净。所有的配置都收敛到了每一个服务各自的 `docker-compose.yml` 中。当你不需要某个服务时，直接删掉对应目录即可，不留下一丝脏乱的反代配置文件。这是自托管重度玩家走向高阶工程化运维的必经之路。

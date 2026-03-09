@@ -1,0 +1,98 @@
+---
+title: "让机器干活：利用 Bash 脚本与 Cron 定时全自动更新 Sing-box 规则与版本"
+author: "毛佳国"
+pubDatetime: 2026-03-09T13:15:00.000+08:00
+featured: false
+draft: false
+tags:
+  - 拓展教程
+  - 运维自动化
+  - Bash
+  - Linux
+description: "Sing-box 迭代极快，路由规则每天都在变动。教你如何在 Linux 旁路由和 VPS 上写一段极简脚本，让系统在半夜为你自动更新一切。"
+---
+
+随着防火墙（GFW）名单每天的扩张，“昨天还能连的网站，今天就上不去了，必须手动更新一下 geoip 路由库”成为了很多自建节点或软路由玩家的日常烦恼。除此之外，作为最“卷”的开源项目之一，Sing-box 几乎每两周就出一个底层性能优化和新功能的新版本。
+
+作为极客，任何需要被重复执行的杂事，都应交给机器。这篇文章教你用 Linux 下最初始自带的几个命令组件，写一套在睡梦中就能全自动“更新规则 + 核心换代”的车间流水线机制。
+
+## 场景一：自动更新外部的 srs 路由规则文件
+
+在《Sing-box 自定义规则集 (.srs) 编译》一文中，我们学会了手动在客户端写 YAML 并编译出 srs 文件。但如果你在配置 `config.json` 里并没有用 `remote` 方式引入（有时候下载 Github 的 remote 链接会被墙卡死），而是直接在 VPS 本地写了基于局域网的 local 直连引用，你就需要定时去拉取大佬更新好的最新二进制 srs 规则库替换本地文件了。
+
+### 编写热更新脚本 `update_rules.sh`
+
+我们在宿主机专门存放配置的 `singbox` 的目录新建一个文件：
+
+```bash
+cd /root/singbox/
+nano update_rules.sh
+```
+
+利用 `wget` 把开源大佬预编译好的最新广告屏蔽和中国大陆直连的 srs 拉下来（覆盖旧文件），并通过给 Sing-box 发送特殊系统信号使其“热重载（无需中断用户当前连接）”。
+
+```bash
+#!/bin/bash
+echo "[$(date)] 开始更新 Sing-box srs 分流规则库..."
+
+# 定义存放你 srs 文件的专属路径
+DIR="/root/singbox/rules"
+
+# 下载社区维护好的地狱级庞大路由数据库 (例如 Loyalsoldier 或者社区维护的分支)
+wget -O $DIR/geoip-cn.srs https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip-cn.srs
+wget -O $DIR/geosite-cn.srs https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-cn.srs
+wget -O $DIR/geosite-category-ads-all.srs https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-category-ads-all.srs
+
+echo "[$(date)] 规则下载完毕，准备热重载内核..."
+
+# 使用 sighup 信号机制！这个很重要，不需要硬重启进程断别人网就能重新读取！
+# 这是目前 Sing-box 的高端玩法之一
+systemctl reload sing-box
+
+echo "[$(date)] Sing-box 规则热重载真香完成！"
+```
+
+保存后赋予其可执行权限：
+```bash
+chmod +x update_rules.sh
+```
+
+## 场景二：如果你是 Docker 部署的自动升级版版
+
+我们在之前教程里推荐了用 `docker-compose` 以 host 网络方式极其优雅地部署 Sing-box。我们同样写个叫 `docker_update.sh` 的脚本实现“一键平滑重启拉取新镜像”：
+
+```bash
+#!/bin/bash
+DIR="/root/singbox"
+cd $DIR
+
+echo "拉取最新的 Sing-box Github 镜像版本..."
+docker-compose pull sing-box
+
+echo "销毁旧版本并用新包挂载原版配置启动..."
+docker-compose up -d --remove-orphans
+
+echo "清除残留的临时虚拟网卡和废弃缓存层以节省硬盘..."
+docker image prune -f
+```
+
+同样的加上执行权限 `chmod +x docker_update.sh`。
+
+## 结语篇：让系统大管家 Cron 接管一切
+
+代码写好了，我们需要让它“定时发作”。Linux 自带的万能定时器 `crontab -e` 。
+
+```bash
+crontab -e
+```
+将以下配置放入文件末尾：
+
+```bash
+# 规则变动频繁：每天凌晨 04点 00分，执行纯净无伤热重载更新规则
+0 4 * * * /root/singbox/update_rules.sh >> /var/log/singbox_rule_cron.log 2>&1
+
+# 核心非常强大不敢天天动：每周日凌晨 05点 00分，执行大内核重启换代更新
+0 5 * * 0 /root/singbox/docker_update.sh >> /var/log/singbox_core_cron.log 2>&1
+```
+
+一切大功告成。在极客精神的加持下，你再也不需要隔三差五上去输一串冗长的重启代码了。Sing-box 和 Linux 就是如此迷人，你定义底层逻辑，机器为你服务十年。

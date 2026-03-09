@@ -1,0 +1,118 @@
+---
+title: "进阶：Sing-box 节点群组管理：如何配置 URLTest 自动测速与选择器模式"
+author: "毛佳国"
+pubDatetime: 2026-03-09T12:45:00.000+08:00
+featured: false
+draft: false
+tags:
+  - 拓展教程
+  - 进阶配置
+  - 分流策略
+description: "买了多个 VPS 或者有好几个机场节点？教你如何利用 Sing-box 的 Selector 和 URLTest 高级出站特性实现故障自动转移。"
+---
+
+很多朋友在进阶后都不再满足于单一节点的科学上网。你可能同时拥有：
+* 一个延迟极低专打游戏的香港节点
+* 一个带宽极大专门看网飞（Netflix）的美国节点
+* 一个平时浏览网页用来备用的日本便宜节点
+
+在使用 Clash/mihomo 时，可以通过策略组（Proxy Groups）极好地管理这些节点。而在 **Sing-box** 内，这一套操作通过强大的 **outbounds (出站组)** 配合 `selector` 和 `urltest` 同样可以完美实现，甚至判定速度更加智能！
+
+## 核心概念：出站类型（Type）的演变
+
+以前我们只会配置单一的具体节点出站（比如 `type: "vless"` 或 `type: "hysteria2"`）。
+现在，我们要定义专门用于“容纳和管理”节点的高级虚拟出站。主要有两种：
+
+1. **`selector` (手动选择器)**: 类似于 Clash 的 select，包含一群节点，你可以从列表中选择当前激活的节点。
+2. **`urltest` (自动测速选择)**: 类似于 Clash 的 url-test，软件后台按照设定的时间间隔偷偷去测试一组节点，谁的延迟最低，就自动切换到谁！这对保证网络的极致畅通极其有用。
+
+## 实战演练：配置一份带高可用容灾的出站
+
+下面是一套非常经典的“两套容灾”配置（去掉了具体的节点协议参数以保持简洁）。
+
+```json
+"outbounds": [
+  // 1. 手动选择组：最顶层的出口总闸，我们可以手动干预大方向
+  {
+    "type": "selector",
+    "tag": "Proxy-Selector",
+    "outbounds": [
+      "Auto-Fastest",   // 选项1: 交给测速全自动打理
+      "HK-Gaming",      // 选项2: 手动强制选香港游戏节点
+      "US-Netflix",     // 选项3: 手动强制选美国解锁节点
+      "direct"          // 选项4: 强制直连
+    ],
+    "default": "Auto-Fastest" // 默认走自动测速
+  },
+
+  // 2. 自动测速组 (URLTest)：包含所有代理节点，不断挑选跑得最快的那个
+  {
+    "type": "urltest",
+    "tag": "Auto-Fastest",
+    "outbounds": [
+      "HK-Gaming",
+      "US-Netflix",
+      "JP-Backup"
+    ],
+    "url": "https://www.gstatic.com/generate_204", // 谷歌测速验证地址
+    "interval": "3m",        // 每 3 分钟进行一次体检
+    "tolerance": 50          // 容忍度 50ms。换句话说，如果原本的节点只比第一名慢不到 50 毫秒，为了稳定性它就不会盲目切换。
+  },
+
+  // 3. 具体的底层真实节点
+  {
+    "type": "vless",
+    "tag": "HK-Gaming",
+    // ... 服务器 IP / UUID 等略 ...
+  },
+  {
+    "type": "hysteria2",
+    "tag": "US-Netflix",
+    // ... US 配置略 ...
+  },
+  {
+    "type": "shadowsocks",
+    "tag": "JP-Backup",
+    // ... JP 配置略 ...
+  },
+
+  // 4. 直连保留出站
+  {
+    "type": "direct",
+    "tag": "direct"
+  }
+]
+```
+
+## 在路由 (Route) 模块进行调用
+
+配置好这些强大的组别后，我们在 `route` 中就可以极其简单粗暴地完成指挥：
+
+```json
+"route": {
+  "rules": [
+    // 国内 IP 和域名走直连
+    {
+      "geosite": "cn",
+      "geoip": "cn",
+      "outbound": "direct"
+    },
+    // 将剩余的、需要出国的所有流量，全部丢给咱们配好的 "Proxy-Selector" 总闸门
+    {
+      "outbound": "Proxy-Selector" 
+    }
+  ],
+  "auto_detect_interface": true
+}
+```
+
+## 为什么要特别关注 `tolerance` 容忍度参数？
+
+很多第一次配 `urltest` 的玩家为了追求极致的低延迟，会把 `tolerance` 设置为 `0` 或 `5`。
+这会带来**灾难性的后果**！
+
+节点的延迟是时刻波动的，上一秒香港节点是 50ms，下一秒稍微拥堵变成了 52ms，而同时美国节点的测速正好是 180ms，如果台湾节点此刻变成了 51ms。你的连接就会在香港和台湾节点之间疯狂横跳。最长见的表现就是：你在玩游戏时突然掉线，你在刷网页图片时需要重新加载（因为你的公网出口 IP 变了）。
+
+**最佳实践**是将 `tolerance` 设定在 `50 - 100` 之间。这代表着：“这几个节点谁最快我当然选谁，但只要当前连着的节点没比第一名慢出 50 毫秒的阈值，我就觉得它良好，坚决不切断当前来之不易的连接。”
+
+这就是高可用和容灾理念在 Sing-box 客户端中的完美体现。利用这套组合拳，即使半夜某个 VPS 宕机了，你也几乎感受不到任何网络中断，一切在后台自动倒流完成了修复！

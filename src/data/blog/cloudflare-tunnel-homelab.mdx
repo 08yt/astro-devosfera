@@ -1,0 +1,79 @@
+---
+title: "没有公网 IP 怎么外网访问？Cloudflare Tunnel 内网穿透终极指南"
+author: "毛佳国"
+pubDatetime: 2026-03-09T14:40:00.000+08:00
+featured: true
+draft: false
+tags:
+  - 网络技术
+  - 内网穿透
+  - Cloudflare
+  - HomeLab
+description: "家里装了 NAS 或者软路由，但运营商死活不给公网 IP？不要再去搞复杂的 FRP 和端口映射了，Cloudflare Tunnel 让你零成本优雅穿透。"
+---
+
+很多刚入坑 HomeLab（家庭实验室）的朋友，把家里的旧电脑装上了 PVE，跑起了各种好玩的 Docker 服务（比如自己的博客、青龙面板、Alist 网盘）。在局域网玩得不亦乐乎，但一出门想要用手机在外网访问，瞬间傻眼。
+
+打电话给宽带运营商要公网 IPv4？现在不仅很难要到，有些地区甚至还会被要求加钱升级企业套餐。
+
+过去解决这个问题的经典方案是搞一台有公网 IP 的便宜 VPS，自己搭建 **FRP 服务端** 进行内网穿透。但 FRP 配置繁琐，且极其依赖你那台中转 VPS 的宽带（小水管 VPS 传大文件慢到反人类）。
+
+今天，我们要介绍现代内网穿透的王牌工具 —— **Cloudflare Tunnel (旧称 Argo Tunnel)**。
+
+## 什么是 Cloudflare Tunnel？
+
+简而言之：你不需要在家里光猫上折腾任何“端口映射 (Port Forwarding)”，你甚至可以是在一个拥有严密防火墙的校园网或公司内网里。
+
+只要你的内网机器能连上互联网，你在机器上跑一个小小的守护进程 `cloudflared`。这个进程会主动向 Cloudflare 的边缘节点发起一条加密的长连接隧道。
+
+当你在外网用手机访问 `nas.yourdomain.com` 时，Cloudflare 会接收你的请求，并顺着刚才那条隧道，原封不动地把请求塞回你家里的服务器中！
+**而且这一切：全免费、自带 CDN 隐藏真实 IP、自带防御 DDoS、甚至自带 HTTPS 证书！**
+
+## 部署前提
+
+1. 一个托管在 Cloudflare 的域名（任意便宜的后缀均可）。
+2. 一台内网服务器（哪怕是一个运行着 Linux 的树莓派或者群晖 NAS）。
+3. 绑定了一张信用卡的 Cloudflare 账号（开通 Zero Trust 需要验证，但选择 Free 方案绝不会扣除任何费用）。
+
+## 在网页端优雅配置隧道面板
+
+以前的 Tunnel 还需要在终端里手敲各种长长的 Token 和配置文件，现在 Cloudflare 把所有的操作都做成了 **Zero Trust 可视化控制台**。
+
+1. 登录 Cloudflare，左侧导航栏找到 `Zero Trust` 并进入。
+2. 左侧菜单选择 `Networks` -> `Tunnels`。
+3. 点击黄色的 `Add a tunnel` 按钮。
+4. 选择 `Cloudflared` 作为连接器，给这条隧道随便起个名字，比如 `My-HomeLab`。
+
+## 将隧道接入家中的服务器
+
+到了这一步，网页会生成一段供各种操作系统直接粘贴运行的代码（包含 Windows / Mac / Linux / Docker）。
+
+如果你家里的机器装着 Docker（强烈推荐），你只需要复制那段 Docker 部署命令并在内网主机的终端里执行：
+
+```bash
+docker run cloudflare/cloudflared:latest tunnel --no-autoupdate run --token eyJhb...[你专属的超长Token]...
+```
+
+等待 10 秒钟，回到你的 Cloudflare 网页端，你会看到刚才那个隧道的 Status 变成了绿色的 `Active`（已连接）。恭喜，物理隧道已经打通！
+
+## 分配路由与域名转换 (Public Hostname)
+
+现在隧道通了，我们要告诉 Cloudflare：“如果有人访问 A 网址，就请你通过隧道把流量转发到家庭局域网的 B 接口”。
+
+1. 点击刚才建好的隧道，进入设置，选择顶部的 `Public Hostname` 选项卡。
+2. 点击 `Add a public hostname`。
+3. **Subdomain**（子域名）：填 `nas`
+4. **Domain**（主域名）：选择下拉列表里你托管在 CF 的域名。
+5. **Service Type**（服务类型）：填 `HTTP`
+6. **URL**：填入你内网机器上那个服务的真实局域网 IP 和端口，比如 `192.168.1.100:8080`
+
+点击保存 (Save)！
+
+## 见证奇迹的时刻
+
+此刻，你可以完全断开手机的 Wi-Fi 切换到 5G 移动网络流量（模拟身处外网的情况）。然后在手机浏览器里输入：
+`https://nas.yourdomain.com`
+
+网页会瞬间秒开！并且浏览器地址栏左侧挂着安全无误的 HTTPS 小绿锁。
+
+从此以后，你每在家里部署一个新服务（比如 9090 端口的面板），你只需要去网页端加一条 `Public Hostname` 路由表记录，一秒钟后外网就能用完美的域名加 HTTPS 访问了。**向万恶的运营商内网动态 IP 和被封锁的 80/443 端口挥手告别吧！**

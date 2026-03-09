@@ -1,0 +1,95 @@
+---
+title: "Nginx 已经老了？下一代 Web 服务器 Caddy：三行代码搞定自动 HTTPS"
+author: "毛佳国"
+pubDatetime: 2026-03-09T14:45:00.000+08:00
+featured: false
+draft: false
+tags:
+  - 运维自动化
+  - Web服务器
+  - Caddy
+description: "每次配 Nginx 都要查半天文档？还要写几十行反向代理和手工申请 SSL？体验用 Go 语言编写的 Caddy 吧，它的优雅会让你震撼。"
+---
+
+如果要在 Linux 服务器上挂一个静态网页或者给服务做个反向代理，99% 的老教程都会教你：`apt install nginx`。
+
+诚然，如果你的网站每天有几千万次的极高并发吞吐请求，Nginx 和它底层的 C 底层架构依然是无敌霸王。
+但是对于我们 **95% 的普通开发者和 HomeLab 极客来说，Nginx 带来的心智负担太沉重了**：
+* 每次增加新网站，都要写一堆极其晦涩的 `location` 和 `proxy_pass`。
+* 忘了加分号，或者大括号没闭合，重启直接告诉你配置文件语法错误。
+* 让网站通上 HTTPS，你需要再装一个 `certbot`，并且要定期提心吊胆 Let's Encrypt 的证书有没有自动续期。
+
+今天我向大家极其推荐另一款现代 Web 服务器：**Caddy**。由于它是使用 Go 语言全新编写的，并且内置了不可思议的 Let's Encrypt 自动交互机制，它让一切都变得难以置信的简单。
+
+## Nginx 与 Caddy 的配置文件“长度”对决
+
+让我们来看一个最常见的场景：**我有一个运行在本地 3000 端口的 Node.js 网站（或者是 Sing-box 的监控面板），我想要用 `https://app.yourdomain.com` 把它反代出去给全世界访问。**
+
+### 旧时代的做法（Nginx）：
+你需要新建一个几十行的配置，然后再跑 certbot。
+
+```nginx
+server {
+    listen 80;
+    server_name app.yourdomain.com;
+    # 一堆强制重定向的代码...
+    return 301 https://$host$request_uri;
+}
+server {
+    listen 443 ssl;
+    server_name app.yourdomain.com;
+
+    ssl_certificate /etc/letsencrypt/live/app/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/app/privkey.pem;
+    # 还要自己找复杂的 SSL 安全加密算法组凑上去配置表...
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_addrs;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+### 次时代架构的做法（Caddy）：
+打开服务器上的 `Caddyfile`，输入以下惊世骇俗的**两行代码**！
+
+```caddyfile
+app.yourdomain.com {
+    reverse_proxy 127.0.0.1:3000
+}
+```
+
+保存，运行 `caddy reload`。
+**结束了？！**
+
+没错，结束了。就这短短的两行英文单词，Caddy 在后台疯狂地帮你做完了以下所有事情：
+1. 自动截获 80 端口和 443 端口。
+2. 自动把所有访问 80 端口 HTTP 的明文流量，帮你全局 `301 重定向` 到了 443 端口。
+3. 自动和 Let's Encrypt 或者 ZeroSSL 机构发起接口通信验证，三秒钟内为你**生成、下载并挂载好一张最高安全级别的 HTTPS SSL 证书**。
+4. 自动把真实访客的 IP 和一堆复杂的反代 HTTP 头，完美地交接给 `localhost:3000`！
+5. 甚至在三个月后证书快到期时，它甚至会在后台全自动帮你静默续签好。
+
+## 托管纯静态网页同样暴躁
+
+如果你不用框架，只是写了一个经典的纯 HTML/CSS/JS 的文件夹放在 `/var/www/mywebsite`，想要当个人主页展示。
+
+使用 Caddy，配置同样只需要两行半：
+
+```caddyfile
+www.mywebsite.com {
+    root * /var/www/mywebsite
+    file_server
+}
+```
+
+重新加载生效后，你的全球带有 HTTPS 的高安全标准静态防盗链网站，就部署完成了。
+
+## 结语
+
+在计算机性能极度贫瘠的时代，我们需要用人类极高的配置理解成本去适应机器（比如忍受 Nginx）。
+而如今这已经是云原生的时代了，现代软件（如 Caddy、Sing-box）都体现了同一个主旨：**利用高级语言底层的封装库，将极为复杂的底层机制包裹起来，暴露出让用户一看就懂、哪怕是外行绝不会写错配置文件的极简接口。**
+
+少即是多。如果你不想成为专门写反代的运维工程师，从今天起试试丢掉你的 Nginx 吧。

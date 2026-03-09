@@ -1,0 +1,117 @@
+---
+title: "永远不再手动发版：用 GitHub Actions 为 Astro 博客接入全自动 CI/CD 持续部署"
+author: "毛佳国"
+pubDatetime: 2026-03-09T14:55:00.000+08:00
+featured: false
+draft: false
+tags:
+  - 运维自动化
+  - GitHub Actions
+  - Astro
+  - 静态网站
+description: "每次写完博客还要重新跑 npm run build 然后再传去服务器？体验通过 Git Push 代码加上魔法般的 GitHub Actions 解锁大公司般的自动化流水线。"
+---
+
+很多朋友在按照我们的结构搭建好类似 `singbox.eu.cc` 这样精美的 Astro 博客后。每次在本地用 Markdown 写完了一篇洋洋洒洒的高级教程，会按照极其原始的行为做以下重复劳动：
+1. 终端里敲 `pnpm run build`。
+2. 干坐在椅子上等控制台跳一行行的生成日志。
+3. 把生成好的几十兆 `dist` 静态文件夹打开。
+4. 用 SSH 或者 FTP 传到自己的云服务器上……
+
+万一你在哪一个步骤断电了，或者刚才文章里的一个错别字你想改一下？完蛋了，上面 4 个极其折磨人的机械动作你得全都重来一遍！
+
+## 工业级的解法：CI/CD 持续集成
+
+大公司是怎么发版的？他们甚至都不会碰线上的代码。他们只管写内容，写完了往代码托管平台上一推（Git Push）。平台会借用云端的机器人计算力，自动拉起一台“一次性且干净”的云电脑机器，在这台电脑上帮你跑打包指令，并且在打包完成后顺带着执行一个 SSH 文件上传的命令帮你塞进最终的小鸡里。
+
+这就是赫赫有名的 **CI/CD（持续集成与持续部署）**。并且目前，这一切针对我们极客和个人博客来说，依靠 **GitHub Actions** ，是**完全终身免费的**无限云计算资源。
+
+## 场景配置：向 Cloudflare Pages 进行自动化零成本部署
+
+将全静态的 Astro 博客部署在全球分发免费不限流的 **Cloudflare Pages** 平台可谓是目前最强的梦幻组合（比放在还要掏钱买的小水管 VPS 上快多了！）。
+
+你只需要跟着我做一次：
+
+### 1. 将项目托管到 GitHub
+首先确保你的整个 Astro 源代码项目已经在一个你专属的 GitHub Repository 里（可以设置为 Private 私有防抄袭）。
+
+### 2. 在 Cloudflare 面板新建 Pages
+登录你的 Cloudflare：
+1. 前往 `Pages` (页面) 菜单。
+2. 选择 **连接到 Git (Connect to Git)**。
+3. 授权绑定你的那个装有 Astro 源码的 GitHub 仓库。
+4. **框架预设 (Framework preset)** 选择 `Astro`。
+5. **构建命令 (Build command)** 填 `npm run build` 或 `pnpm run build`。
+6. **输出目录 (Build output directory)** 填 `dist`。
+
+点击 Save and Deploy（保存并部署）！
+
+### 首次魔法展现
+
+就在你点击保存的瞬间。Cloudflare 内部的一台构建金刚机器人，已经使用千兆级的专线去你的 Github 拉下了所有的 `.mdx` 文章。然后在它的超级计算机里花费几秒钟把你的 HTML 全部压缩打包生成完毕并立刻分发展示在了全球的两百多个高速缓存节点上。
+
+这时候你可以丢掉你的本地服务器部署了。它会扔给你一个你指定的永久免费 `https://xxx.pages.dev` 域名。如果你有自己的各种前沿域名，直接去 Custom Domain (自定义域) 绑定就行了（我们这个站本身就是这个极致体系下的产物）。
+
+## GitHub Actions 的深度融合扩展 (如果你不仅用前端平台)
+
+但是！如果你不想完全交给被别人绑定生态，你想通过自动化机器人自动**打成 Docker 镜像 或者 强行 SCP 上传到你家自己的老爷车物理群晖 NAS 里上呢**？
+
+这就必须请出基于 GitHub 的神级自动化脚本文件 `workflow.yml` 了！
+
+在你的项目根目录下建这个路径文件夹：`.github/workflows/deploy.yml`。填入以下配置：
+
+```yaml
+name: Deploy Astro Blog to My VPS 🚀
+
+# 触发条件：只要代码由于修改被 git push 合并进 main 分支，这个机器人就开始接单干活！
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest # GitHub 掏钱借你一台运行最新版 Ubuntu 服务器做运算
+    steps:
+
+      # 1. 把最新的代码抓过来
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2. 安装 Node.js 基建
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      # 3. 安装依赖基石 pnpm
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      # 4. 这个服务器执行依赖安装并且进行最艰苦的高并发编译
+      - name: Install and Build Astro
+        run: |
+          pnpm install
+          pnpm run build
+
+      # 5. 生成好的 /dist 小包裹，用极其安全的秘钥免密 rsync 上传到你的任意 VPS 指定绝密位置
+      - name: Deploy to VPS using rsync
+        uses: easingthemes/ssh-deploy@v5
+        with:
+          SSH_PRIVATE_KEY: ${{ secrets.MY_SERVER_SSH_KEY }}
+          ARGS: "-rltgoDzvO --delete"
+          SOURCE: "dist/"
+          REMOTE_HOST: ${{ secrets.MY_SERVER_IP }}
+          REMOTE_USER: "root"
+          TARGET: "/var/www/myblog/html"
+```
+
+只要在这之后，你每次写完无论几百篇的文章，你只需要像一个运筹帷幄的将军一样，极其极简在电脑终端敲三个词：
+```bash
+git add .
+git commit -m "发布新文章"
+git push
+```
+
+你可以直接合上电脑屏幕睡觉去。几千公里外的 GitHub 云数据中心会拉起虚拟机、完成所有高强度算力解包打包和加密传输。几十秒后，全世界的网民就能阅读到你博客上的最新博文了。这就是目前现代化全自动化极速发布的最高效模式体验！
