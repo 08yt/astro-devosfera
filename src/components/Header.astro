@@ -110,6 +110,13 @@ const isActive = (path: string) => {
           </li>
           <li>
             <a
+              href="/friends"
+              class:list={["nav-link", { "nav-active": currentPath === "/friends" }]}
+              >友链</a
+            >
+          </li>
+          <li>
+            <a
               href="/about"
               class:list={["nav-link", { "nav-active": isActive("/about") }]}
               >关于</a
@@ -248,9 +255,17 @@ const isActive = (path: string) => {
               <span>更多标签</span>
             </a>
             <a
+              href="/friends"
+              class:list={["mobile-nav-link", { active: currentPath === "/friends" }]}
+              style="--i:5"
+            >
+              <span class="mobile-nav-indicator"></span>
+              <span>友情链接</span>
+            </a>
+            <a
               href="/about"
               class:list={["mobile-nav-link", { active: isActive("/about") }]}
-              style="--i:5"
+              style="--i:6"
             >
               <span class="mobile-nav-indicator"></span>
               <span>关于作者</span>

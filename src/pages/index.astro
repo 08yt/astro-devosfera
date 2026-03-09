@@ -53,6 +53,7 @@ const recentPosts = sortedPosts.filter(({ data }) => !data.featured);
           {SITE.title}
           <a
             target="_blank"
+            rel="noopener noreferrer nofollow"
             href="/rss.xml"
             class="ml-1 inline-block align-middle"
             aria-label="rss feed"
@@ -93,6 +94,7 @@ const recentPosts = sortedPosts.filter(({ data }) => !data.featured);
               class="font-medium underline decoration-dashed underline-offset-4 hover:text-accent"
               href={SITE.profile}
               target="_blank"
+              rel="noopener noreferrer nofollow"
             >
               {SITE.author}
             </LinkButton>
