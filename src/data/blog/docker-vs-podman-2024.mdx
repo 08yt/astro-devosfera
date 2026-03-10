@@ -1,0 +1,69 @@
+---
+title: "Docker 还是 Podman？2024 年容器化技术选型指南"
+author: "毛佳国"
+pubDatetime: 2024-03-15T09:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Docker
+  - Podman
+  - 容器技术
+  - 运维
+description: "用了多年的 Docker，是时候了解一下 Podman 了。无守护进程、Rootless 模式、原生支持 systemd，这篇文章带你看看 2024 年的 Podman 是否已经足够取代 Docker。"
+---
+
+在容器化的世界里，Docker 无疑是不可撼动的霸主。从开发者的本地环境到生产服务器，`docker run` 已经成为无数开发和运维人员的肌肉记忆。
+
+然而，到了 2024 年，另一个名字正在被越来越多人提及 —— **Podman**（Pod Manager）。它由 Red Hat 主导开发，并且在 RHEL 8 之后已经默认取代了 Docker。
+
+那么，Podman 到底是什么？它与 Docker 有什么区别？我们今天是否应该把现有的服务迁移到 Podman？
+
+## 致命弱点：Docker Daemon 守护进程
+
+要理解 Podman，首先要理解 Docker 的运作架构。
+当你执行 `docker run` 或者 `docker ps` 的时候，你运行的其实仅仅是一个命令行客户端（CLI）。真正干活的，是后台那个一直在运行的超级大总管：**Docker Daemon (`dockerd`)**。
+
+这个架构带来了几个痛点：
+1. **单点故障**：如果 Docker Daemon 崩溃或者你需要重启升级它，那么你这台机器上运行着的**所有容器**都会跟着宕机。这对于追求高可用的生产环境是一个巨大的隐患。
+2. **极高的权限风险**：Docker Daemon 默认是以 `root` 权限运行的。这意味着，如果你能够访问 Docker Daemon 的 Socket，你就基本上拥有了宿主机的完整 root 权限。这在安全隔离上是一个广为人知的短板。
+
+## 颠覆者出场：Podman 的无守护与 Rootless
+
+Podman 针对 Docker 的痛点，进行了彻底的架构重构：
+
+### 1. 无守护进程 (Daemonless)
+Podman 根本没有后台常驻的守护进程服务！
+当你执行 `podman run` 时，它是通过标准的 Linux `fork/exec` 机制直接启动一个容器进程（由底层的 `conmon` 监控）。
+这就意味着：
+* **更轻量**：没有常驻后台吃内存的服务。
+* **高可用**：每个容器都是独立的进程。你可以单独升级和管理，绝不会出现“牵一发而动全身”的大面积宕机。
+
+### 2. 原生的 Rootless 模式
+Podman 从设计之初就将安全放在首位。普通用户就可以直接执行 `podman run`，而不需要 sudo。
+即使容器在内部以为自己是 root（UID 0），但在宿主机看来，它只是一个没有任何特权的普通用户进程。就算黑客攻破了容器逃逸出来，也什么都干不了！
+
+### 3. 与 Systemd 的绝世组合
+如果你想让 Docker 容器随系统开机启动，你需要配置 Docker 的 `restart: always` 策略。
+但在 Podman 中，因为没有守护进程，每个容器都是普通的 Linux 进程。如果你想让它开机自启，你可以极度优雅地使用 Linux 原生的进程大管家：**systemd**。
+
+Podman 提供了一条神仙命令：`podman generate systemd`。
+它能直接把你的容器转化为标准的 `/etc/systemd/system/xxx.service` 文件！这是运维极客的狂欢。
+
+## 100% 的 CLI 兼容：极低的迁移成本
+
+Podman 最聪明的地方在于，它的命令行参数与 Docker **完全一致**。
+你甚至可以直接在你的 `.bashrc` 或 `.zshrc` 里偷偷加一句：
+`alias docker=podman`
+
+然后你以前怎么敲 `docker ps`、`docker logs`、`docker build`，现在还是怎么敲，甚至不需要修改习惯。
+
+## 结语：选谁？
+
+**保留 Docker 的情况**：
+* 你极度依赖 Docker Compose 编排复杂的多个服务（虽然 Podman 现在有了 `podman-compose`，但在某些极度复杂的网络互联上，Docker Compose 依然最稳）。
+* 你的生产环境已经被 Docker 深度绑定。
+
+**拥抱 Podman 的情况**：
+* 你在构建全新的单点服务器 HomeLab 环境。
+* 你的公司对安全（Root无特权）有着极高的红线要求。
+* 你想要用标准的 Systemd 来统一管理容器。
