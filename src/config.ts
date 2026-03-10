@@ -6,7 +6,7 @@ export const SITE = {
   title: "Sing-box 教程指南",
   ogImage: "devosfera-og.webp", // ubicado en la carpeta public
   lightAndDarkMode: true,
-  postPerIndex: 6,
+  postPerIndex: 20,
   postPerPage: 20,
   scheduledPostMargin: 15 * 60 * 1000, // 15 minutes
   showArchives: true,

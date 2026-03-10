@@ -1,0 +1,84 @@
+---
+title: "Docker Compose 简明核心教程：用代码定义你的所有应用"
+author: "毛佳国"
+pubDatetime: 2025-06-15T10:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Docker
+  - 基础入门
+  - 运维自动化
+description: "每次启动 Docker 容器都要敲长长的一串命令？学会 Docker Compose，用一份优雅的 YAML 文件掌管你服务器上的所有服务生命周期。"
+---
+
+在刚接触 Docker 的时候，我们常常被教导使用 `docker run -d -p 8080:80 --name myapp nginx` 这样的长命令来启动一个服务。如果只是测试一下，这没问题。
+
+但当你真正在一台服务器上部署复杂的应用系统（比如一个需要连接 MySQL 数据库和 Redis 缓存的博客程序）时，你的 `docker run` 命令可能会长达几十行，包含无数的 `-e` 环境变量和 `-v` 挂载目录。一旦这台服务器重启，或者你需要把服务迁移到另一台机器，你绝对不可能记住当初敲了什么命令。
+
+这就是 **Docker Compose** 诞生的意义：**基础设施即代码 (IaC)**。
+
+## 什么是 Docker Compose？
+
+简单来说，Docker Compose 允许你用一个名为 `docker-compose.yml` 的结构化人类可读文件，把你所有需要运行的容器的启动参数全部清晰地写在里面。
+
+以后你在这个目录下，只需要敲入短短三个单词：
+```bash
+docker-compose up -d
+```
+Docker 就会自动照着你写在配置文件里的蓝图，按照严格的依赖顺序（比如先启动数据库在启动网站），自动帮你把所有的网络、端口、容器全部建立并启动。
+
+## 一个典型的 YAML 蓝图示例
+
+让我们来看一个非常典型的 WordPress 博客的部署文件。在这个文件中，我们需要同时运行一个 PHP 网页端，和一个 MySQL 数据库端。
+
+```yaml
+version: '3.8' # Compose 文件的语法格式版本
+
+services: # 下面定义了我们需要运行的各个服务
+  db:
+    image: mysql:8.0 # 使用 MySQL 8.0 镜像
+    container_name: wordpress_db
+    restart: always # 如果崩溃或者服务器重启，自动把它拉起来
+    environment:
+      # 用环境变量设置数据库密码
+      MYSQL_ROOT_PASSWORD: my_strong_password
+      MYSQL_DATABASE: wordpress
+    volumes:
+      # 把数据库的数据持久化保存到宿主机的 ./db_data 目录下，防止容器删除后数据丢失
+      - ./db_data:/var/lib/mysql
+
+  wordpress:
+    depends_on:
+      - db # 告诉 Docker，启动这个组件前必须先启动上面的 db 组件
+    image: wordpress:latest
+    container_name: wordpress_web
+    restart: always
+    ports:
+      - "8000:80" # 把宿主机的 8000 端口映射给容器内部的 80 端口
+    environment:
+      # 告诉网页端如何去连接刚建好的数据库
+      WORDPRESS_DB_HOST: db:3306 
+      WORDPRESS_DB_USER: root
+      WORDPRESS_DB_PASSWORD: my_strong_password
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      # 把上传的图片等附件永久挂载出来
+      - ./wp_data:/var/www/html
+```
+
+## 它为什么如此优雅？
+
+从上面的例子可以极其直观地看出 Compose 的恐怖优势：
+
+1. **自动构建内网**：你注意到 `WORDPRESS_DB_HOST: db:3306` 这里没写具体的 IP，而是直接写了 `db`（上面服务的名字）。在此文件中所有的多个容器，会被 Docker Compose 自动放进同一个绝对隔离的专属高速局域网黑盒里，它们可以直接通过彼此的名字互相访问。而且因为 MySQL 服务没有对外暴露（没有写 `ports`），外网无论使用什么扫描器也绝对扫不到你的核心数据库，极大地提升了安全性！
+2. **极简运维与迁移**：当你想要更换服务器时，你只需把这个拥有 `docker-compose.yml` 蓝图文件和旁边挂载出来的 `db_data` 文件夹的压缩包用优盘拷贝到新服务器。敲击 `docker-compose up -d`，整个极其庞杂的网络系统会在一分钟内分毫不差地原地复活。
+
+## 日常最常用的三个命令
+
+在包含了配置文件的 `yml` 目录下：
+
+* **启动所有服务（后台运行）**：`docker-compose up -d`
+* **停止并删除所有容器和网络**：`docker-compose down`
+* **查看这组服务打印的实时日志**：`docker-compose logs -f`
+
+这就是使用容器时代的最高范式逻辑：不要去敲一次性死板的命令，去写有持久生命周期的蓝图代码。一旦你熟悉了它，这会成为你构建属于自己 HomeLab 家庭赛博堡垒的最初块万能砖。

@@ -1,0 +1,70 @@
+---
+title: "告别屏幕牛皮癣广告：用 Docker 部署 AdGuard Home 打造家庭净网 DNS 中心"
+author: "毛佳国"
+pubDatetime: 2026-03-10T14:30:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Docker
+  - HomeLab
+  - 软路由
+  - DNS
+description: "各家智能电视和盒子里到处都是开机广告和植入？手机浏览器一不小心就点到恶意跳转？教你在内网搭建全宇宙最强的防污染 DNS 去广告网关。"
+---
+
+很多极客在家里部署了复杂的软路由和旁路由集群（比如运行着 OpenWrt 和 Sing-box 透明代理），但是却经常忽略了网络基础设施中最核心的一环 —— **DNS (域名解析系统)**。
+
+当你或者你的家人打开智能电视、或者在手机上浏览那些充斥着弹窗广告的网页时。你的设备都会在后台默默地去向外请求诸如 `ad-server.com` 这类广告追踪服务器。传统的手段是在手机上装各种很难用的拦截插件，但电视盒子上根本无能为力。
+
+今天，我们要请出在 HomeLab 家庭实验室中占据核心地位的开源神器：**AdGuard Home**。
+
+## 什么是 AdGuard Home？
+
+顾名思义，它是著名去广告公司 AdGuard 推出的“家庭网络级别”去广告中心组件。
+当你将它部署在你的群晖 NAS 或者 PVE 小主机中，并**将家里路由器的默认 DHCP 的 DNS 选项，强制设定为这台小主机的 IP 时**，神奇的事情就会发生：
+
+家里所有的设备（从 iPhone、电脑、到扫地机器人、老式智能电视）在上网前的每一次域名请求，都会经过 AdGuard Home 的“安检器”。只要 AdGuard 发现你想请求的网址在这个几百万的恶意黑名单/广告字典库里，它就会瞬间拦截屏蔽请求。
+
+**结果就是：电视开机广告请求发不出去，直接跳进主菜单；手机浏览无良网页时的各种牛皮癣追踪图片全部显示不出来变成了大白板！并且全家所有的设备无需安装任何额外软件！**
+
+## 使用 Docker 极速部署
+
+如果你已经具备了 Docker 环境。拉起一个可以管控全家的私人 DNS 服务器只需要仅仅几行。新建一个目录 `adguardhome`，在里面新建 `docker-compose.yml`：
+
+```yaml
+version: '3.3'
+
+services:
+  adguardhome:
+    image: adguard/adguardhome
+    container_name: adguardhome
+    restart: unless-stopped
+    ports:
+      - 53:53/tcp # 最核心的 DNS 协议端口
+      - 53:53/udp
+      - 3000:3000/tcp # 舒适的 Web 初始化图形面板
+    volumes:
+      - ./workdir:/opt/adguardhome/work
+      - ./confdir:/opt/adguardhome/conf
+```
+
+执行启动：
+```bash
+docker-compose up -d
+```
+
+## 初始化与高级规则配置
+
+打开浏览器，访问 `http://你的内网机器IP:3000`，你就能进入极具科技感、充满各项实时解析折线图和统计数据的 Web 管理大屏了。
+
+跟着初始化向导创建完管理员账号后（之后管理界面的端口可能会提示变更为 80，视你设置而定）。登录后台面板，进入**“过滤器” (Filters) -> “DNS 拦截列表”**。
+
+这才是最关键的一步，系统默认自带的去广告字典通常是针对欧洲/美国的。我们需要通过“添加自定义列表”加入中国大陆的强力规则。这里推荐圈内最负盛名的规则：
+
+1. **Anti-AD**：目前中文区极其激进霸道的全网去广告、防挖矿及反追踪过滤列表。
+   URL (请查阅其项目源获取最新地址)：`https://raw.githubusercontent.com/privacy-protection-tools/anti-AD/master/anti-ad-easylist.txt`
+2. **大圣净化** (针对国内流媒体电视/视频软件特别优化的一套规则集)。
+
+把这些规则勾选应用后，将您家中的主路由器后台的 **“LAN DHCP 服务器 DNS 设定”** 改为部署了 AdGuard Home 的机器 IP。
+
+现在你可以泡一杯咖啡，回到刚才那个统计面板大屏幕。看着大屏幕上跳动的“已拦截恶意请求：8429次”的拦截数狂飙，你一定会油然而生一种掌控了整片数字领空的安全感。
