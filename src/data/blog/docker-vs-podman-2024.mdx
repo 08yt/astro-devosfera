@@ -31,7 +31,7 @@ description: "用了多年的 Docker，是时候了解一下 Podman 了。无守
 
 Podman 针对 Docker 的痛点，进行了彻底的架构重构：
 
-### 1. 无守护进程 (Daemonless)
+### 1. 无守护进程
 Podman 根本没有后台常驻的守护进程服务！
 当你执行 `podman run` 时，它是通过标准的 Linux `fork/exec` 机制直接启动一个容器进程（由底层的 `conmon` 监控）。
 这就意味着：
@@ -57,7 +57,7 @@ Podman 最聪明的地方在于，它的命令行参数与 Docker **完全一致
 
 然后你以前怎么敲 `docker ps`、`docker logs`、`docker build`，现在还是怎么敲，甚至不需要修改习惯。
 
-## 结语：选谁？
+## 选谁？
 
 **保留 Docker 的情况**：
 * 你极度依赖 Docker Compose 编排复杂的多个服务（虽然 Podman 现在有了 `podman-compose`，但在某些极度复杂的网络互联上，Docker Compose 依然最稳）。

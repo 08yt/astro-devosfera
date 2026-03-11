@@ -1,0 +1,64 @@
+---
+title: "极客的终极备份方案：Proxmox Backup Server (PBS) 快速入门"
+author: "毛佳国"
+pubDatetime: 2025-12-01T09:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Proxmox
+  - 备份
+  - Homelab
+  - 运维
+description: "数据无价！如果你在使用 Proxmox VE作为底层，那么配套的 Proxmox Backup Server 绝对是你的首选备份方案。本文教你如何部署和使用 PBS 实现去重增量备份。"
+---
+
+在 Homelab 折腾之路中，“数据无价，谨慎操作”是每一个踩过坑的极客的血泪教训。
+
+很多使用 Proxmox VE (PVE) 的玩家习惯直接用 PVE 节点自带的备份功能，把配置和磁盘打包到一块外接硬盘上。这种方式虽然简单，但它是**全量备份**——每次备份都要占用大量存储空间，且耗时极长。
+
+今天我们要介绍的是 Proxmox 官方提供的企业级大杀器：**Proxmox Backup Server (PBS)**。
+
+## PBS 的核心优势
+
+1. **增量备份 (Incremental Backup)**：在初次全量备份后，之后的每次备份**只传输和存储有变动的数据块**。
+2. **极致的数据去重 (Deduplication)**：对于多台安装了相同操作系统（比如几十个 Debian 容器）的虚拟机，那些一模一样的系统文件只会在 PBS 里存储一份！这能节省极其夸张的硬盘空间。
+3. **安全加密**：支持客户端端的加密，所有数据在离开 PVE 节点之前就已经加密，即使你的备份服务器被黑客连锅端走，数据也是安全的。
+4. **防御勒索软件的同步功能**：PBS 支持将备份再次同步（Sync）到远程或异地的另一个 PBS 节点或磁带库中。
+
+## 部署 PBS 的建议姿势
+
+PBS 的本质也是一个基于 Debian 的定制版操作系统。你有几种部署方式：
+
+- **物理机独立部署（推荐）**：最好找一台带有多盘位的旧机器或 NAS 专门跑 PBS。这样当你的主 PVE 服务器物理损坏时，备份依然健在。
+- **PVE 上的虚拟机部署（折中）**：如果你的机器不够，可以在 PVE 里开一台虚拟机装 PBS，把一块独立的物理硬盘直通（Passthrough）给它。**注意：千万不要把虚拟机的数据和包含 PBS 的硬盘放在同一个物理存储池里。**
+
+## 核心配置流
+
+### 1. 添加 Datastore（数据存储）
+
+Datastore 是 PBS 用来存放备份碎片和索引的地方。
+你需要在侧边栏进入 `Datastore` -> `Add`，选择一块挂载好的大容量硬盘。
+
+### 2. 生成指纹与添加用户
+
+为了让 PVE 能够连接到 PBS，你需要两样东西：
+1. **PBS 节点的指纹 (Fingerprint)**：可以在右上角的 Dashboard 中点击 `Show Fingerprint` 获取。
+2. **访问令牌或用户**：建议在 `Access Control` -> `User Management` 中专门创建一个用于备份的受限用户（如 `backup_user@pbs`）并使其拥有 DatastoreAdmin 权限。
+
+### 3. 将 PBS 加入到 PVE 节点
+
+切回到你的 PVE 管理界面：
+1. `Datacenter` (数据中心) -> `Storage` (存储) -> `Add` -> 选择 `Proxmox Backup Server`。
+2. 填入 PBS 的 IP 地址、用户名（如 `backup_user@pbs`）、密码、以及对应的 `Datastore` 名称和 `Fingerprint`。
+3. 点击添加后，你就会在左侧树状图里看到全新的 PBS 存储啦。
+
+### 4. 制定备份计划 (Backup Job)
+
+进入 `Datacenter` -> `Backup`，点击 `Add` 创建定时计划。
+- **Storage**：选择你刚刚添加的 PBS 存储。
+- **Schedule**：可以设定类似 `每天 02:00`。
+- **Retention (保留策略)**：这在 PBS 中极其强大，建议设置 `Keep Last: 3`，`Keep Daily: 7`，`Keep Weekly: 4`，`Keep Monthly: 6`。它会自动修剪旧备份以节省空间。
+
+## 总结
+
+当你习惯了 PBS 秒级完成增量备份的快感时，你绝对不会再想用传统的全量打包备份了。结合 3-2-1 备份原则（3份数据，2种存储介质，1份异地），你可以用 Restic 或 Rclone 定期把 PBS Datastore 的底层文件同步到云端，做到真正的万无一失。

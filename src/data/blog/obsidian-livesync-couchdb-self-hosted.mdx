@@ -1,0 +1,79 @@
+---
+title: "数据掌握在自己手中：使用 CouchDB 自建 Obsidian 实时同步"
+author: "毛佳国"
+pubDatetime: 2026-03-01T09:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - 效率工具
+  - Obsidian
+  - Homelab
+  - 数据库
+description: "担心笔记软件倒闭？不用官方昂贵的同步服务，如何使用开源的 CouchDB 为你的 Obsidian 搭建一套毫秒级的多端实时同步方案。"
+---
+
+Obsidian 凭借其 **本地优先 (Local first)** 和纯 Markdown 格式的强大哲学，在笔记软件领域一骑绝尘。它的最大卖点就是你的数据不需要保存在某个服务商的闭源云端里。
+
+但在享受数据绝对掌控权的同时，如何优雅地在 PC 和手机端实现**无缝同步**，成了许多用户的痛点。
+官方的 Obsidian Sync 体验很好，但价格也不差；而使用 iCloud/OneDrive/坚果云，在移动端往往遇到严重的延迟，甚至时不时的因为多端编辑产生文件冲突，让人抓狂。
+
+这时候，如果你有一台 24 小时开机的 NAS 或云服务器，利用 **Self-hosted LiveSync 插件 + 自建 CouchDB**，就是你最好的选择——免费、私有，最重要的是，**真正的实时级别的修改同步**。
+
+## LiveSync 方案的原理是什么？
+
+**Obsidian-livesync** 这个开源插件使用了一个非常有意思的设计模式：**CouchDB**。
+
+CouchDB 是一个以 JSON 为文档基础的 NoSQL 数据库，它的杀手锏就是**多主复制 (Multi-Master Replication)** 同步协议。
+在 LiveSync 架构下，相当于在每一台装有 Obsidian 的电脑、手机上都运行一个微型的数据库 (PouchDB，也就是浏览器和应用内部版本的 CouchDB)，而它们都与你自建在服务器上的中心 CouchDB 保持着长连接。
+你修改笔记的每一个键盘敲击动作，都会立刻转化成增量数据同步到大后方服务器，再广播给别的在线客户端。一旦离线修改，在上线后也会进行高效率、自带冲突处理的合并。
+
+## Docker Compose 部署您的“后端中心”
+
+我们不直接把数据库端口暴漏，推荐使用现成的 docker-compose 项目启动 CouchDB。
+
+首先，找一个你的服务器目录，创建 `docker-compose.yml`：
+
+```yaml
+version: '3.8'
+
+services:
+  couchdb:
+    image: couchdb:3.3
+    container_name: obsidian-couchdb
+    restart: unless-stopped
+    ports:
+      - "5984:5984"
+    volumes:
+      - ./data:/opt/couchdb/data
+      - ./etc/local.d:/opt/couchdb/etc/local.d
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=your_super_strong_password
+```
+
+启动数据库：`docker-compose up -d`。至此就完成了基础的数据库部署！
+
+## 服务配置：反向代理与安全加固
+
+由于 CouchDB 需要暴露给移动端连接，而原生的 CouchDB 在大流量或者弱网下不够稳定。
+我们需要通过 Nginx 或者 Traefik 给它套上一层 HTTPS，这不仅能解决跨端明文传输抓包风险，还能在前端规避 CORS 的跨域问题，极大提升了客户端的稳定性。
+
+你可以直接在宝塔面板或者 Nginx Proxy Manager (NPM) 里配置反向代理：
+把你绑定的域名（比如 `obsidian.yourdomain.com`），指向 `http://IP:5984`。
+
+**重要！关于 CORS：**
+由于移动端的安全限制，很多时候 Obsidian 会要求跨域权限，所以你需要在 Nginx 层处理 CORS 或者打开 CouchDB 本身的跨域限制（通过进入 CouchDB 的 Fauxton 面板完成设定）。
+
+## 在 Obsidian 中配置 LiveSync
+
+万事俱备，最后回到你手边的设备：
+1. 在 Obsidian 社区插件中下载安装 **Self-hosted LiveSync**。
+2. 在插件设置中选择 `CouchDB`。
+3. 输入你绑定的公网地址（https：//），填上你的数据库名（自己想一个），并输入用户名 `admin` 及其刚才设定的密码。
+4. 点下 `Test Database Connection`。成功后，直接开启所有同步开关并选择 `Rebuild Everything`。
+
+接着，你在另一台设备的空库同样操作，就能直接从远端拉取刚才完整的笔记库。
+
+## 结语
+
+使用 LiveSync 的初体验绝对能让你感到极度的安全感——因为所有的数据不仅在各端本地有完整的备份历史，还在你的 Homelab 数据库里有增量的记录版图。即使服务器宕机，你也可以把本地的数据拷贝出来。这种不用担心停运且速度超频的“第二大脑”，正是我们坚持自我搭建的美妙之处。

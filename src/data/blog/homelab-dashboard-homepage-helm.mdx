@@ -1,0 +1,92 @@
+---
+title: "告别浏览器书签：用 Homepage 打造终极 Homelab 导航页"
+author: "毛佳国"
+pubDatetime: 2025-10-21T10:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Homelab
+  - Docker
+  - 工具
+  - 前端
+description: "Homelab 服务一多，记住所有 IP 和端口简直是灾难。在这篇文章中，我们将部署现代化、高颜值且能通过 API 实时显示服务状态的仪表盘 Homepage。"
+---
+
+你的 Homelab 里是不是已经塞满了几十个服务？路由器后台、NAS 管理页、各种下载工具、监控看板……每个都有不同的 IP、端口甚至子域名。
+早些年，大家习惯把它们塞进浏览器的书签栏。后来，有了 Homer 和 Heimdall 这类导航页工具。
+
+但在 2025 年的今天，我要郑重向你推荐目前体验最好的选择：**Homepage**。
+
+## 为什么是 Homepage？
+
+Homepage 是一个极其轻量、速度极快，且高度可定制的静态导航页。它不仅仅是一堆超链接按钮，它的杀手锏在于**服务小组件 (Service Widgets)**。
+
+通过 API 深度集成，Homepage 可以直接在按钮上显示服务当前的状态。例如：
+- **PVE 节点**：显示当前 CPU、内存使用率和集群健康度。
+- **qBittorrent**：直接显示实时下载/上传速度。
+- **Docker**：显示正在运行的容器数量。
+- **Pi-hole / AdGuard Home**：当天被拦截的广告数量。
+
+这一切不需要你在每个服务中切来切去，在一个页面上就能对 Homelab 的运行状况一目了然。
+
+## 极速起飞：使用 Docker Compose 部署
+
+Homepage 的部署极其简单。由于它非常轻量，几乎不耗费系统资源。
+
+```yaml
+version: '3.3'
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    ports:
+      - 3000:3000
+    volumes:
+      - /path/to/config:/app/config # 这个目录用于存配置文件
+      - /var/run/docker.sock:/var/run/docker.sock:ro # 如果你想显示 docker 容器状态，需要挂载
+    restart: unless-stopped
+```
+
+启动之后，访问 `http://你的IP:3000` 即可看到默认界面。
+
+## 核心配置逻辑
+
+Homepage 的所有配置都基于非常直观的 YAML 文件，主要有四个：
+1. `services.yaml`：定义所有的应用链接、分类和 API 状态组件。
+2. `bookmarks.yaml`：用来放置不需要 API 读取的普通网页书签。
+3. `widgets.yaml`：显示顶部通栏的系统状态（天气、服务器系统资源占用等）。
+4. `settings.yaml`：全局页面设置，如主题色、页面标题、背景壁纸等。
+
+### 示例：添加 Proxmox 与 Gitea 服务
+
+编辑 `services.yaml`：
+
+```yaml
+- 基础设施:
+    - Proxmox:
+        icon: proxmox
+        href: https://192.168.1.100:8006
+        description: 虚拟化底层
+        widget:
+            type: proxmox
+            url: https://192.168.1.100:8006
+            username: root@pam
+            password: your_password
+            node: pve
+
+- 开发工具:
+    - Gitea:
+        icon: gitea
+        href: https://git.yourdomain.com
+        description: 代码托管
+        widget:
+            type: gitea
+            url: https://git.yourdomain.com
+            key: your_api_token
+```
+
+当你保存 YAML 文件时，Homepage 会**即时热加载**，你无需重启容器就能在页面上看到效果。
+
+## 总结
+
+结合 Cloudflare Access 或前文提到的 Authentik，你可以把你的 Homepage 安全地暴露在公网上（只需验证鉴权即可访问）。此时，你的 Homepage 将化身为一个云端的“数字工作台”，无论你走到哪里，打开浏览器就能掌控家中的一切服务。

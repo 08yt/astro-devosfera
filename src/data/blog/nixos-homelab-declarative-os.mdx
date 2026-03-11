@@ -1,0 +1,102 @@
+---
+title: "拥抱 NixOS：用代码定义你的全部 Homelab 服务器"
+author: "毛佳国"
+pubDatetime: 2026-03-01T08:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - Linux
+  - NixOS
+  - 运维
+  - Homelab
+description: "每次重装服务器都要背一遍安装命令？是时候拥抱“声明式配置”的巅峰之作 NixOS 了，教你如何用几行代码定义出一个拥有灵魂的操作系统。"
+---
+
+在折腾 Homelab 的过程中，“重装系统”或者“迁移环境”（比如从一台旧的物理机迁移到新的迷你主机）可能是最让人头疼的事情。
+
+对于传统的 Debian 或 Ubuntu，你需要配置网卡、安装环境依赖、挂载磁盘、配置防火墙、安装 Docker、部署各种系统的 cron 任务…… 即使你用 Ansible 也难免遇到脏环境冲突的问题。
+
+既然 Kubernetes 已经让**声明式基础设施（Infrastructure as Code）**成为云原生的标配，为什么我们的服务器系统本身不能也是声明式的呢？
+
+主角登场：**NixOS**
+
+## 什么是 NixOS？
+
+NixOS 是一个建立在独创的 Nix 包管理器之上的 Linux 发行版。
+
+它的核心哲学非常极端：**整个系统，从内核参数、安装的软件、用户权限、开机自启服务到各种软件的具体配置文件，全部由一个或多个纯文本的 `.nix` 配置文件来定义。**
+
+这意味着：
+1. **可复现性（Reproducibility）**：你把你的 `configuration.nix` 拷到任何一台空机器上，敲一行命令，得到的新系统**每一丝**底层环境都和老系统**完全一样**。
+2. **原子升级与极速回滚**：当你更改了配置文件并重新构建系统时，如果新系统有引发崩溃的 Bug，你只需要在 Grub 引导菜单选择上一个时代（Generation），系统会在两秒内退回到升级前的完美状态。
+
+## 概念颠覆：没有全局依赖
+
+传统 Linux 把所有软件混在一起安装（比如所有的动态链接库都在 `/usr/lib`），很容易导致依赖地狱。
+
+在 NixOS 中，压根没有标准的 `/usr/bin`。所有的软件、库文件都被安装到了完全隔离的 `/nix/store` 目录中，每个软件带有一个根据其依赖环境计算出的 Hash 摘要。
+你这台系统可以**并存三个不同版本的 Node.js 或 Python**，它们互相不仅没有任何冲突，甚至完全不知道对方的存在！
+
+## 开始你的第一次配置
+
+一个最基础的 NixOS 包含了以下元素。你甚至可以在文件中直接定义并启动 Docker 和你需要暴露的端口：
+
+```nix
+# /etc/nixos/configuration.nix
+
+{ config, pkgs, ... }:
+
+{
+  imports = [ ./hardware-configuration.nix ];
+
+  # 设置 Bootloader
+  boot.loader.systemd-boot.enable = true;
+  boot.loader.efi.canTouchEfiVariables = true;
+
+  # 配置主机名
+  networking.hostName = "homelab-server1"; 
+
+  # 时区与 Locales
+  time.timeZone = "Asia/Shanghai";
+
+  # 放行防火墙端口
+  networking.firewall.allowedTCPPorts = [ 22 80 443 3000 ];
+
+  # 启用 Docker
+  virtualisation.docker.enable = true;
+
+  # 创建日常使用的用户
+  users.users.maojiaguo = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" "docker" ]; # 把自己加入 sudo 和 docker 组
+    packages = with pkgs; [
+      tree
+      htop
+      git
+      neovim
+    ];
+  };
+
+  # 开启 SSH
+  services.openssh.enable = true;
+}
+```
+
+当你改动了这个文件之后，只需要执行：
+```bash
+sudo nixos-rebuild switch
+```
+
+系统会根据这本“菜谱”，在线拉取各种原料，帮你“烹饪”出这个系统。所有不在配置里写明的东西（比如你之前手动用 apt 装的乱七八糟的残留）都不会污染主系统。
+
+## Flakes：将版本控制推向极致
+
+在 2026 年，几乎没有 NixOS 玩家还在使用纯粹的 `configuration.nix`。大家都在使用一种被称为 **Flakes** 的高级特性。
+Flakes 引入了类似 `package-lock.json` 的机制（`flake.lock`），这意味着只要你的 lock 文件不更新，十年后你构建出来的系统和今天的不仅配置一模一样，而且每个软件的**二进制版本分毫不差**。
+
+更可怕的是，你可以把家里的软路由、NAS、服务器的配置文件写在一个 Git 仓库里。以后在新机器装系统，你只需执行一段指向你 Github 仓库的命令，属于你的那一台服务器就立刻“原神归位”。
+
+## 总结
+
+NixOS 具有难以置信的学习曲线，它要求你像写代码一样去写系统。它打破了你对 Linux 的传统认知。
+但只要你跨过了初期的阵痛，你就会拥有一种无与伦比的安全感：**你的服务器永远不会变脏，你的所有努力和折腾，都浓缩在了一套能够伴随你终生的 Git 代码中。** 这才是程序员最大的浪漫。

@@ -1,0 +1,91 @@
+---
+title: "在 Homelab 中部署 Ollama：零门槛运行私有大语言模型"
+author: "毛佳国"
+pubDatetime: 2026-03-01T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - AI
+  - Homelab
+  - Docker
+  - Ollama
+description: "把 ChatGPT 装进自己的服务器是一种什么体验？2026 年本地大语言模型 (LLM) 已经非常成熟，本文教你使用 Ollama 在 Homelab 中极速运行属于你自己的私人 AI。"
+---
+
+前几年，想在本地跑一个像样的 AI 大模型，你需要有顶级的显卡底座配置（至少几十个 G 的显存），还得学一堆难以搞懂的 Python 环境配置（conda, transformers, PyTorch...），成功率感人，动不动就爆显存 (OOM) 崩溃。
+
+但在 2026 年，情况发生了翻天覆地的变化。以 **Ollama** 为代表的“大模型运行框架”彻底改变了游戏规则。它可以将数百 GB 的复杂大模型，无痛打包压缩进一个二进制引擎里运行。更令人兴奋的是，即便你**没有独立显卡，仅靠一台普通的 Homelab CPU 服务器，也能流畅地与 AI 对话！**
+
+## Ollama 到底有多神？
+
+Ollama 的设计非常像 Docker。它把复杂的 AI 模型（如 Llama 3、Qwen、Mistral 等）打包成了类似于容器镜像的东西。你只需要像拉取 Docker 镜像一样一键执行指令，环境、推理核心就瞬间搞定。
+
+它的主要特点包括：
+1. **多平台无缝集成**：支持 macOS、Windows、Linux，而且在底层智能做出了极其优秀的加速。
+2. **极其简单的命令行**：你不需要关注复杂的权重配置，直接一句 `ollama run qwen:14b`，就能立刻唤醒并启动。
+3. **强大的兼容 API**：它默认启动提供了一个 OpenAI 标准格式的兼容后端 API（`:11434`）。这使得凡是支持 ChatGPT 接口的工具（比如 NextChat、LobeChat，或者你自己写的脚本语言），只要改个源地址，就能直接接入。
+
+## 如何在 Homelab 中通过 Docker 部署？
+
+对于服务器玩家，Docker 是第一选择，这样可以不会轻易污染宿主机环境。
+
+建立一个目录，然后创建 `docker-compose.yml`：
+
+```yaml
+version: '3.8'
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - 11434:11434
+    volumes:
+      - ./ollama_data:/root/.ollama
+    # 如果你的服务器有 NVIDIA 显卡，可以去掉下面的注释使用 GPU 原生加速
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    restart: unless-stopped
+    ports:
+      - 3000:8080
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    volumes:
+      - ./webui_data:/app/backend/data
+```
+
+启动命令：
+```bash
+docker-compose up -d
+```
+
+等等……这个 `open-webui` 是什么？
+既然我们有了后端 Ollama，我们就需要一个像 ChatGPT 那样能打字互动的前端网页版界面。**Open WebUI**（前身为 Ollama WebUI）就是为此而生的天作之合。
+
+## 跑起你的第一个模型和应用
+
+打开浏览器，访问 `http://机器IP:3000` 并注册一个本地管理员账号。
+
+然后，你需要在页面上的设置中，下载你需要运行的 AI 大语言模型。Ollama 源有很多现成的优质免费开源模型可以跑。由于是跑在 Homelab 或者普通 CPU，推荐尺寸是 7B 或 14B 参数级别。
+
+这里推荐使用阿里云发布的极具良心的基础中文最强开源模型之一：`qwen2.5:14b`。
+
+在输入框填入拉取命令，按下降箭头：服务器会开始疯狂下载数十 GB 的缓存文件，接着，你就能看到一个非常丝滑、甚至本地可控没有各种恶心审查的“私人助理”。
+
+### 私有化 LLM 能干什么？
+
+1. **绝对隐私的数据处理：** 把你公司极度敏感不能泄露的代码、报表，丢进服务器，由于一切不上公网，所以完全无需担心合规性或者机密泄露问题！
+2. **无限制的情景扮演与小说辅助。** 
+3. **搭配其他容器自动化：** 后续你可以尝试将私有大语言模型加入你的 Home Assistant，实现对讲式的全屋智能语言操控；又或者是搭建基于 RAG（检索增强生成）机制的知识库引擎（如同刚才所说的 Obsidian + 私有文档嵌入处理引擎）。
+
+Homelab 开启了本地算力的民主化，而 Ollama 让这个 AI 春天变得无比低门槛。装上它，立刻感受未来的力量吧。

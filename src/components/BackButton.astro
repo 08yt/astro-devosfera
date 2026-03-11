@@ -2,9 +2,34 @@
 import IconChevronLeft from "@/assets/icons/IconChevronLeft.svg";
 import { SITE } from "@/config";
 
+export interface Props {
+  currentTitle?: string;
+}
+
+const { currentTitle } = Astro.props;
+
 // Build breadcrumb from current URL
 const currentUrlPath = Astro.url.pathname.replace(/\/+$/, "");
 const pathSegments = currentUrlPath.split("/").filter(s => s.trim());
+
+const i18nMap: Record<string, string> = {
+  posts: "教程",
+  tags: "标签",
+  about: "关于作者",
+  search: "搜索",
+  archives: "归档",
+  galleries: "图集",
+  basics: "基础入门",
+  server: "服务器搭建",
+  advanced: "规则进阶",
+  clients: "客户端",
+  geek: "极客探索",
+  routing: "路由分流",
+  config: "配置详解",
+  convert: "配置转换",
+  protocols: "新协议",
+  friends: "友情链接",
+};
 ---
 
 {
@@ -46,7 +71,13 @@ const pathSegments = currentUrlPath.split("/").filter(s => s.trim());
               ~
             </a>
 
-            {pathSegments.map((segment, index) => (
+            {pathSegments.map((segment, index) => {
+              const decoded = decodeURIComponent(segment);
+              const translated = i18nMap[decoded.toLowerCase()] || decoded;
+              const isLast = index + 1 === pathSegments.length;
+              const displayTitle = (isLast && currentTitle) ? currentTitle : translated;
+
+              return (
               <>
                 <span
                   class="breadcrumb-sep shrink-0 text-accent/40"
@@ -55,23 +86,23 @@ const pathSegments = currentUrlPath.split("/").filter(s => s.trim());
                   /
                 </span>
 
-                {index + 1 === pathSegments.length ? (
+                {isLast ? (
                   <span
                     class="breadcrumb-current truncate px-1.5 py-0.5 text-accent/90 capitalize"
                     aria-current="page"
                   >
-                    {decodeURIComponent(segment)}
+                    {displayTitle}
                   </span>
                 ) : (
                   <a
                     href={`/${pathSegments.slice(0, index + 1).join("/")}/`}
                     class="breadcrumb-link shrink-0 rounded-md px-1.5 py-0.5 capitalize text-foreground/50 transition-colors duration-200 hover:bg-muted/10 hover:text-accent"
                   >
-                    {decodeURIComponent(segment)}
+                    {displayTitle}
                   </a>
                 )}
               </>
-            ))}
+            )})}
           </nav>
         )}
         </div>

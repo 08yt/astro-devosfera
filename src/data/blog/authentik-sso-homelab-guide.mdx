@@ -1,0 +1,152 @@
+---
+title: "在 Homelab 中部署 Authentik：实现企业级单点登录 (SSO)"
+author: "毛佳国"
+pubDatetime: 2025-09-12T08:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - Homelab
+  - 安全
+  - Docker
+  - SSO
+description: "随着 Homelab 中自建服务越来越多，记住每个应用的管理密码变得十分痛苦。本文将带你使用 Docker 部署 Authentik，为你的所有自建服务加上统一的 SSO 门户和双因素认证 (2FA)。"
+---
+
+随着我们在 Homelab 中部署的服务越来越多（如 Jellyfin, Nextcloud, Gitea, Grafana 等），每个服务都有自己独立的用户系统和登录页面。这不仅意味着你需要管理大量的账号密码，还意味着你的家人朋友在使用这些服务时也会感到困惑。
+
+解决这个问题的方法就是引入 **单点登录 (SSO, Single Sign-On)** 和统一的身份提供者 (IdP)。在开源领域，**Authentik** 是目前最强大、最现代化的选择之一。
+
+## 什么是 Authentik？
+
+Authentik 是一个开源的身份提供者。简单来说，它就像是你 Homelab 的“护照中心”。
+当你尝试访问一个接入了 Authentik 的服务时，该服务会把你重定向到 Authentik 的登录页面。你在 Authentik 完成登录（并验证 2FA）后，它会发给你一张“通行证”，然后你带着这张通行证就能直接进入目标服务。
+
+### 为什么选择 Authentik？
+- **多协议支持**：支持 OIDC、SAML、LDAP 等主流身份验证协议。
+- **内置反向代理认证 (Forward Auth)**：对于本身不支持 SSO 的老旧应用，Authentik 可以在 Nginx/Traefik 层面直接进行拦截认证。
+- **自定义认证流 (Flows)**：你可以像搭积木一样设计用户的登录流程，比如“输入密码 -> 验证 TOTP -> 如果是内部 IP 则免 2FA”。
+- **漂亮的 UI 界面**：自带一个非常美观的用户应用面板，可以直接作为一个精致的导航页。
+
+## Docker Compose 部署指南
+
+官方提供了详细的 Docker 部署方式。我们需要一个 `docker-compose.yml` 和一个 `.env` 配置文件。
+
+```yaml
+version: "3.4"
+
+services:
+  postgresql:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    volumes:
+      - database:/var/lib/postgresql/data
+    environment:
+      POSTGRES_PASSWORD: ${PG_PASS:?database password required}
+      POSTGRES_USER: ${PG_USER:-authentik}
+      POSTGRES_DB: ${PG_DB:-authentik}
+    env_file:
+      - .env
+
+  redis:
+    image: docker.io/library/redis:alpine
+    command: --save 60 1 --loglevel warning
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep PONG"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 3s
+    volumes:
+      - redis:/data
+
+  server:
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2024.8.0}
+    restart: unless-stopped
+    command: server
+    environment:
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+    volumes:
+      - ./media:/media
+      - ./custom-templates:/templates
+    env_file:
+      - .env
+    ports:
+      - "${COMPOSE_PORT_HTTP:-9000}:9000"
+      - "${COMPOSE_PORT_HTTPS:-9443}:9443"
+    depends_on:
+      - postgresql
+      - redis
+
+  worker:
+    image: ${AUTHENTIK_IMAGE:-ghcr.io/goauthentik/server}:${AUTHENTIK_TAG:-2024.8.0}
+    restart: unless-stopped
+    command: worker
+    environment:
+      AUTHENTIK_REDIS__HOST: redis
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__USER: ${PG_USER:-authentik}
+      AUTHENTIK_POSTGRESQL__NAME: ${PG_DB:-authentik}
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+    user: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./media:/media
+      - ./certs:/certs
+      - ./custom-templates:/templates
+    env_file:
+      - .env
+    depends_on:
+      - postgresql
+      - redis
+
+volumes:
+  database:
+    driver: local
+  redis:
+    driver: local
+```
+
+还需要生成密钥并在本地创建 `.env` 文件：
+```bash
+# 生成密码与密钥
+echo "PG_PASS=$(openssl rand -base64 36 | tr -d '\n')" >> .env
+echo "AUTHENTIK_SECRET_KEY=$(openssl rand -base64 60 | tr -d '\n')" >> .env
+# 如果你想使用自动 Outpost 部署功能（建议开启）
+echo "AUTHENTIK_ERROR_REPORTING__ENABLED=true" >> .env
+```
+
+启动服务：
+```bash
+docker-compose up -d
+```
+
+## 初始化设置
+
+访问 `http://你的IP:9000/if/flow/initial-setup/` 来设置初始向导并创建默认的管理员账号 `akadmin`。
+
+首次登录后端你会看到强大的管理界面。它的结构主要分为：
+1. **Providers (提供者)**：用来决定**如何验证**（例如使用 OIDC 还是 Forward Auth）。
+2. **Applications (应用)**：映射到你具体的服务（比如 Gitea）。
+3. **Outposts (前哨站)**：负责处理代理鉴权等工作，它会与 Authentik 核心服务通信。
+
+## 接入你的第一个服务：Gitea (OIDC)
+
+以 Gitea 为例，接入 OIDC 非常简单：
+
+1. 在 Authentik 创建一个 Provider，类型选 OAuth2/OpenID Provider。
+2. 配置时记下生成好的 `Client ID` 和 `Client Secret`。
+3. 创建一个 Application，并将其与上一步的 Provider 绑定。
+4. 在 Gitea 的“站点管理 -> 认证源”中，添加 OIDC 类型的认证源，填入 Authentik 的 OIDC Discovery URL (`https://auth.yoursite.com/application/o/gitea/.well-known/openid-configuration`) 和刚才的 ID 与 Secret。
+
+一切设置妥当后，前往 Gitea 登录页，你就会看到一个醒目的 `Sign in with Authentik` 按钮。点击它，就能享受极其顺滑的单点登录体验。对于经常折腾 Homelab 的极客来说，这是一劳永逸的安全和便利解决方案！
