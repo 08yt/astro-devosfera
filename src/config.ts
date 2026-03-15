@@ -1,7 +1,7 @@
 export const SITE = {
   website: "https://singbox.eu.cc/",
   author: "毛佳国",
-  profile: "https://github.com/08yt",
+  profile: "https://github.com/08yt/astro-devosfera",
   desc: "专注 Sing-box 软件的详细使用教程与配置指南。分享跨平台代理工具 Sing-box 的进阶技巧、节点搭建和路由规则配置。",
   title: "Sing-box 教程指南",
   ogImage: "devosfera-og.webp", // ubicado en la carpeta public
