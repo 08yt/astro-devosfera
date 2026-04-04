@@ -18,7 +18,7 @@ Heavily customized version of the [AstroPaper](https://github.com/satnaing/astro
 
 **🌐 Live demo:** [singbox.eu.cc](https://singbox.eu.cc)
 
-![Devosfera OG](public/devosfera-og.webp)
+![Devosfera OG](public/devosfera-og.png)
 
 > **Note:** This project is primarily my personal blog. If anyone wishes to use it, feel free to delete all entries and edit the settings freely.
 

@@ -1,0 +1,297 @@
+---
+title: "Sing-box 高效配置与出站路由全解析：从入门到真实场景实战 (2026版)"
+author: "毛佳国"
+pubDatetime: 2026-03-16T09:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - Sing-box
+  - 代理工具
+  - 路由规则
+  - 教程
+  - 实战
+description: "Sing-box 配置太难？这篇文章为你扫清障碍。全网最详尽的 Sing-box 实战指南，涵盖 TUN 模式、FakeIP、分流路由以及真实生产环境下的完整配置实例，附带大量个人实战心得。"
+---
+
+近年来，在各大代理协议和客户端工具的极致“内卷”下，开源社区诞生了无数优秀的软件。时光荏苒，到了 2026 年的今天，回首过去那段在 V2Ray、Xray、Clash 之间反复横跳的日子，我最终彻底将生活和工作中的所有设备（包括我的软路由、Windows 台式机、MacBook、iPhone 甚至是通过 Apple TV 接管的客厅网络）全部统一迁移到了 **Sing-box**。
+
+对于很多初涉科学上网或是习惯了 Clash 生态一键拖拽节点的小伙伴来说，初次面对 Sing-box 那张“白纸”般的 JSON 配置文件，往往会感到深深的挫败感和无从下手。
+
+今天，我将结合这几年来的真实排错经历与底层网络逻辑，为你带来这篇超长、超实战的 **Sing-box 全场景配置与路由指南**。文章不玩虚的，我会直接抛出我自己在真实场景里稳定运行了数月的代码片段，并逐行掰碎了揉烂了为你拆解。
+
+---
+
+## 为什么 2026 年了，我仍然死磕 Sing-box？
+
+说实话，如今市面上不乏诸如 Clash Verge Rev 这种 UI 极其惊艳、交互极具亲和力的客户端。为什么我还要花大力气去手写 Sing-box 的配置？
+
+1. **绝对的平台一致性**：在过去，手机端我用 Shadowrocket，电脑端用 Clash for Windows，软路由上跑着 OpenWrt 的 PassWall。三者使用的配置文件格式、核心引擎、分流逻辑完全不同！这导致经常出现“电脑打不开某个网站，但在手机上秒开”的薛定谔代理状态。而使用 Sing-box，我只需要维护**一套 JSON 核心配置架构**，无论是 iOS、Android 还是 Linux，甚至是我在廉价 VPS 上搭建的 Server 端，底层表现 100% 一致。
+2. **极低的资源占用**：原生 Go 语言编写，剥离了所有不必要的图形负担（GUI 也是原生的）。对于经常要在外边无市电办公的 Mac 来说，常驻后台的代理工具如果不省电，简直是灾难。在这方面，Sing-box 的电池消耗控制堪称完美。
+3. **先进的协议矩阵**：你可以说 Xray 是 VLESS 的正统，但是 Sing-box 是一个**真正的缝合怪（褒义）**。Shadowsocks、VLESS、Trojan、Hysteria2、TUIC、WireGuard 甚至最新的各类私有协议衍生版，它全部原生且高效支持。
+4. **精妙的灵活路由设计**：Sing-box 将 DNS 模块、Inbound（入站）、Outbound（出站）、Route（路由）解耦得非常干净。这让具有强迫症的极客可以构造出极其精妙的分流策略，不仅精确且毫无迟滞感。
+
+如果你不想只是个“搬运工”，而是希望真正掌握自己网络的生杀大权，那么学习 Sing-box 配置是无可避面的必修课。
+
+---
+
+## 一、Sing-box 的底层哲学：数据是怎么溜出去的？
+
+在贴出枯燥的代码前，我们必须在大脑里建立一个 Sing-box 的数据流转沙盘模型。无论是配置多复杂的节点，Sing-box 永远只做一件事：**处理入口数据，匹配规则，送往出口**。
+
+1. **Inbounds（入口）**：你的流量怎么进到 Sing-box？是通过 SOCKS5 端口？HTTP 代理？还是直接在系统网卡上开个“黑洞”（TUN 模式）把所有流量强制吸入？
+2. **DNS（解析器）**：当浏览器要访问 `google.com` 时，Sing-box 需要决定：我是用国内的阿里云 DNS 来解析它（以免被污染但又可能查不出来），还是用海外的 8.8.8.8 解析它？
+3. **Route（路由/调度员）**：Sing-box 最核心的大脑。它拿着入口传来的数据包特征（目标域名、目标 IP、来源端口、甚至进程名），挨个去对比我们写的 `rules`（规则）。
+4. **Outbounds（出口）**：路由匹配成功后，流量交给出口。出口可以是连接到美国 VPS 的 VLESS 节点，也可以是直接发往本地网卡的 `direct`（直连/绕过代理），或者是直接丢掉的 `block`（拦截）。
+
+---
+
+## 二、实战演练 1：带 FakeIP 的 TUN 模式极简版 (适用于 PC Desktop)
+
+我们先来解决最难搞定的桌面端全局代理需求。大多数小白最苦恼的就是“为什么 Telegram/游戏平台/终端 不走代理”。只要配置了 TUN 加上 FakeIP，所有问题迎刃而解。
+
+**什么是 FakeIP？**
+当我们访问被屏蔽的境外网站时，如果本地 DNS 先去解析，会立刻拿到一个被污染的错误 IP（比如返回 `0.0.0.0`），导致连接失败。FakeIP 的黑科技在于：Sing-box 会“伪造”一个局域网 IP（比如 `198.18.0.123`）直接返回给系统，系统拿到后发包给 TUN 网卡，Sing-box 拦截这个伪造 IP，并直接把原始的域名信息发给远端服务器去解析请求。不仅防污染，还省去了一次本地 DNS 查询的时间！
+
+下面是我精简提炼的真实可用 TUN + FakeIP 的 `config.json` 核心片段：
+
+```json
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns-proxy",
+        "address": "https://8.8.8.8/dns-query",
+        "detour": "proxy"
+      },
+      {
+        "tag": "dns-direct",
+        "address": "https://223.5.5.5/dns-query",
+        "detour": "direct"
+      },
+      {
+        "tag": "dns-fakeip",
+        "address": "fakeip"
+      }
+    ],
+    "rules": [
+      {
+        "outbound": "any",
+        "server": "dns-direct"
+      },
+      {
+        "geosite": ["cn"],
+        "server": "dns-direct"
+      },
+      {
+        "query_type": ["A", "AAAA"],
+        "server": "dns-fakeip"
+      }
+    ],
+    "fakeip": {
+      "enabled": true,
+      "inet4_range": "198.18.0.0/15",
+      "inet6_range": "fc00::/18"
+    },
+    "independent_cache": true
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "singbox-tun",
+      "inet4_address": "172.19.0.1/30",
+      "inet6_address": "fdfe:dcba:9876::1/126",
+      "auto_route": true,
+      "strict_route": true,
+      "stack": "system",
+      "sniff": true
+    }
+  ]
+}
+```
+
+### 深度解析（干货）：
+1. **DNS 兵分三路**：我在 `dns.servers` 里定义了三个服务器：`dns-proxy` 处理境外请求，`dns-direct` 利用无污染的阿里 DNS 处理国内请求，`dns-fakeip` 则负责制造骗局。
+2. **FakeIP 规则陷阱**：重点看 `query_type: ["A", "AAAA"]` 并指向 `dns-fakeip`。这说明只要系统问的域名是常规网站（A记录查IPv4，AAAA查IPv6），全部无脑给它返回假 IP (`198.18.0.0/15` 内的一个随机值)。而诸如国内的平台在 `geosite: ["cn"]` 中被强行指定交给了阿里 DNS (`dns-direct`) 真实解析。这就是让国内外分流互不干扰的终极答案！
+3. **TUN 底层参数**：`auto_route: true` 和 `strict_route: true` 保证了全盘接管路由表。注意我开启了 `sniff: true`（流量嗅探）。这是关键的一步！因为有了 FakeIP，数据包里只有假 IP 没有域名，`sniff` 功能可以从 TLS 握手包（SNI）中强行抓出真实域名给后续的规则匹配。不写这行，你的路由规则会全部瘫痪！
+
+---
+
+## 三、实战演练 2：基于 Srs 规则集的高阶自动分流
+
+在解决了“怎么进去”和“怎么解析”后，就是最为关键的路由匹配了。曾经我们习惯将上千条被封锁域名写死在配置文件里，不仅更新繁琐，还导致配置体积臃肿不堪。2026 年，请全面拥抱 `rule-set` (规则集)。
+
+Sing-box 提出了基于二进制编译的 `.srs` (Sing-box Rule Set) 文件。不仅体积小，匹配速度更是达到了 O(1) 级的恐怖效率。
+
+让我们来看 `route` 和 `outbounds` 的配置结合：
+
+```json
+{
+  "route": {
+    "rules": [
+      {
+        "protocol": "dns",
+        "outbound": "dns-out"
+      },
+      {
+        "ip_is_private": true,
+        "outbound": "direct"
+      },
+      {
+        "rule_set": ["geosite-cn", "geoip-cn"],
+        "outbound": "direct"
+      },
+      {
+        "domain_suffix": ["openai.com", "anthropic.com"],
+        "outbound": "proxy-us"
+      },
+      {
+        "rule_set": "geosite-category-ads-all",
+        "outbound": "block"
+      }
+    ],
+    "rule_set": [
+      {
+        "tag": "geosite-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+        "download_detour": "proxy"
+      },
+      {
+        "tag": "geoip-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
+        "download_detour": "proxy"
+      },
+      {
+        "tag": "geosite-category-ads-all",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs",
+        "download_detour": "proxy"
+      }
+    ],
+    "auto_detect_interface": true
+  },
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "proxy-us",
+      "server": "us1.yourdomain.com",
+      "server_port": 443,
+      "uuid": "7a8bc911-xxxxxxxx",
+      "flow": "xtls-rprx-vision",
+      "network": "tcp",
+      "tls": {
+        "enabled": true,
+        "server_name": "us1.yourdomain.com",
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "reality": {
+          "enabled": true,
+          "public_key": "YOUR_REALITY_PUBKEY",
+          "short_id": "YOUR_SHORT_ID"
+        }
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    },
+    {
+      "type": "dns",
+      "tag": "dns-out"
+    }
+  ]
+}
+```
+
+### 深度解析与实战坑点防避：
+1. **逻辑顺序比命还重要**：`route.rules` 的读取是自顶向下的匹配。第一条永远写 `protocol: "dns"` 走 `dns-out`，否则你的 DNS 请求可能会被莫名其妙的规则卡死（特别是在非 FakeIP 模式下）。第二条解决内网探测 `ip_is_private`。第三条放行所有 `geosite-cn`。这种“排除法”的优先级设定必须烂熟于心。
+2. **按需特别指定**：在规则里，我把 OpenAI 和 Anthropic 这些人工智能服务商单独列了出来，强行发往 `proxy-us` 节点。因为 ChatGPT 对 IP 风控极严，如果不手动绑定一个原生干净 IP 的出站，它随时可能被分配到被污染的万人骑机场 IP 导致封号。这就是 Sing-box "**精确控制论**" 的完美体现。
+3. **出站 VLESS + Reality + Vision 的红利**：在 `outbounds` 中，这是目前全网最强抗封锁协议。它的巧妙之处在于不需要域名，不需要套 CDN。直接白嫖别人的大厂 TLS 证书（比如微软的网页）来冒充自己。配合 `xtls-rprx-vision` 的流控魔法，哪怕是在最敏感的时期，这种配置在我的实践中也是异常稳健。
+
+---
+
+## 四、关于多节点高可用与选择器（Selector 与 URL-Test）
+
+我刚才直接把流量怼到了单一节点 `proxy-us` 上。但在真实生产环境中，单一节点的可用性是不存在的。我们往往手里有一堆便宜的 VPS、各种机场订阅的杂交。这种时候，出站该怎么调度？
+
+在过去，Clash 凭借可视化控制台，你可以疯狂点击不同的节点进行切换。而在纯 CLI 的 Sing-box 核心配置中，我们需要用组的思想。
+
+```json
+{
+  "outbounds": [
+    {
+      "type": "selector",
+      "tag": "proxy",
+      "outbounds": ["us-group", "hk-group", "auto-fallback", "node-vps-1"]
+    },
+    {
+      "type": "urltest",
+      "tag": "auto-fallback",
+      "outbounds": ["node-vps-1", "node-vps-2", "node-airport-hk"],
+      "url": "http://cp.cloudflare.com/generate_204",
+      "interval": "3m",
+      "tolerance": 50
+    }
+    // ... 下方是具体节点的定义
+  ]
+}
+```
+
+在我的个人策略里，我采取了 **层级组 (Hierarchical Groups)** 的管理理念。
+1. `proxy` 是最终对外暴露给路由规则匹配的唯一入口标签（比如前面提到的把被封锁域名都推入 `"outbound": "proxy"`）。
+2. 在 `proxy` 这个手动选择器里，我不仅塞入了具体的单个节点（满足我想定向访问的私欲），我还塞入了一个叫 `auto-fallback` 的自动化组。
+3. `auto-fallback` 是一个基于 `urltest` (延迟测速池) 的自动化工具。每隔 3 分钟，它会静默地向 Cloudflare 的无响应 204 探针发包，如果主节点 VPS-1 超时挂载了，流量会在毫秒内无缝切换给备用的机场节点。由于 tolerance(容忍度) 设置了 50ms，它不会因为轻微的网络波动疯狂乱切 IP，这极大地保障了各类登录状态（比如社交媒体账号）不会因为 IP 频繁变动而触发异地登录风控。
+
+这是纯手动点击党永远无法体会到的优雅全自动体验。
+
+---
+
+## 五、深入避坑指南：DNS 泄露到底怎么破？
+
+如果你跟我一样有严重的精神洁癖，你一定用过各种 IP 查询网站测过自己的匿名度。大部分新人刚部署完节点，兴高采烈地打开泄露测试网站，赫然跑出自己所在城市的联通或是电信 DNS，瞬间崩塌。
+
+这就是由于你没有正确的闭环 DNS 的出站流向。
+
+在 Sing-box 中，防御 DNS Leak 最关键的就这三步，我亲测 100% 免疫：
+1. **DNS 服务器的解析路线强制绑定**：在上文的 `dns` 模块中，我的谷歌 8.8.8.8 是配合了 `"detour": "proxy"` 这个参数的。这就意味着，Sing-box 这个程序自身**想要连接 8.8.8.8 时**，这股流量不仅不会走系统底层，还会被强制重定向进入底部的出站节点！远端代理机替你向谷歌发起了 DNS 请求，完全遮蔽了你的本地真实环境。
+2. **屏蔽纯 IP 出站**：很多软件或者爬虫会越过系统的 DNS 解析，直接向海外发送由内置硬编码设定的 IP 地址的查询。如果这条路没堵死，你的本地运营商网关瞬间就能看到你的异常连接。在 TUN 模式下，这些包全部会送给 Sing-box，因为设置了 `auto_route` 全局接管，匹配后全部走加密隧道 `proxy` 出去，万无一失。
+3. **禁用浏览器的 WebRTC 和 DoH**：这是工具防不住的。请务必要在浏览器中关闭 `Secure DNS` 选项（或者让浏览器强制使用系统代理 DNS），并在插件层面禁用 WebRTC，才能获得最为彻底的网络干净度。
+
+---
+
+## 六、调试利器：新手自我急救宝典
+
+没有任何人的配置文件是一把过的，包括在写这篇文章之前，我也曾经手滑将大括号写错一层导致致命崩溃。如何快速找出问题是高手与新手的绝对分水岭。
+
+如果你用的是自己编写配置的方式：
+1. **永远前台运行测试**：在尝试让服务挂载到 `systemd`（Linux）或者后台进程之前，一定要执行一次：`sing-box run -c config.json`。此时不要关掉终端，开始进行疯狂的业务请求。
+2. **学会看懂日志 Trace**：当你开启了 `"log": {"level": "trace"}` 后，它是一门艺术。看一眼这行：
+   `[Route] tunnel request for domain.com (matched by rule domain_suffix domain.com) -> proxy`
+   如果这里打印出 `matched by rule geosite-cn -> direct`，而你正好死活打不开这个受限网址，恭喜你，你的路由表出现了“误杀”。多半是因为本地 Geosite 库太久没更新，将其误认为了国内直连。立马定位到出错原因。
+
+---
+
+## 复杂但是值得
+
+用 GUI 工具和自写 JSON 相比，就像是用全自动微波炉复热汉堡和在后厨亲手烹饪牛排的差距。前者能快速果腹，但这辈子也难以领略其中的食材原味与火候艺术。
+
+2026 年了，工具已经极度智能化，但墙的策略同样也在引入 AI 的大数据流量分析。我们需要比预置配置更为灵动、可动态修改、细化到协议级别的路由网兜，这只有依靠你对底层配置的深度驯服方能实现。
+
+写好这份接近终极形态的 `config.json`，存在你的私人 Github 仓库里，未来无论是更换客户端、还是换到 OpenWrt 路由器上做透明网关，你只需要一个简单的 `curl` 或者 `wget` 脱拽下来，全世界的大门便对你永远开敞。
+
+希望这篇指南能成为你驯服 Sing-box 的磨刀石，欢迎在各路社交媒体账号或者下面留言与我交流更疯狂的网络拓扑猜想！
