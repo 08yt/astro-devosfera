@@ -7,6 +7,10 @@ import IconWhatsapp from "@/assets/icons/IconWhatsapp.svg";
 import IconFacebook from "@/assets/icons/IconFacebook.svg";
 import IconTelegram from "@/assets/icons/IconTelegram.svg";
 import IconPinterest from "@/assets/icons/IconPinterest.svg";
+import IconMedium from "@/assets/icons/IconMedium.svg";
+import IconTumblr from "@/assets/icons/IconTumblr.svg";
+import IconYoutube from "@/assets/icons/IconYoutube.svg";
+import IconReddit from "@/assets/icons/IconReddit.svg";
 import { SITE } from "@/config";
 
 interface Social {
@@ -36,10 +40,28 @@ export const SOCIALS: Social[] = [
     icon: IconLinkedin,
   },
   {
-    name: "Mail",
-    href: "mailto:[EMAIL_ADDRESS]",
-    linkTitle: `发送邮件给 ${SITE.title}`,
-    icon: IconMail,
+    name: "Medium",
+    href: "https://medium.com/@mjiaguo",
+    linkTitle: `Medium 上的 ${SITE.title}`,
+    icon: IconMedium,
+  },
+  {
+    name: "Tumblr",
+    href: "https://www.tumblr.com/blog/sinbblog",
+    linkTitle: `Tumblr 上的 ${SITE.title}`,
+    icon: IconTumblr,
+  },
+  {
+    name: "YouTube",
+    href: "https://www.youtube.com/@singboxa",
+    linkTitle: `YouTube 上的 ${SITE.title}`,
+    icon: IconYoutube,
+  },
+  {
+    name: "Reddit",
+    href: "https://www.reddit.com/user/Lucky_8588/",
+    linkTitle: `Reddit 上的 ${SITE.title}`,
+    icon: IconReddit,
   },
 ] as const;
 
