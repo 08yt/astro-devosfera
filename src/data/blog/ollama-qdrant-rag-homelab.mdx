@@ -1,0 +1,125 @@
+---
+title: "使用 Ollama 与 Qdrant 构建企业级本地 RAG 知识库"
+author: "毛佳国"
+pubDatetime: 2026-03-20T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - AI
+  - Homelab
+  - 向量数据库
+  - RAG
+description: "纯本地、零隐私泄露的 AI 知识库构建指南。本文详细记录了如何使用 Ollama 和现代向量数据库 Qdrant 打造完全属于自己的 RAG 问答管道，附带完整代码和避坑指南。"
+ogImage: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=1200&h=630&fit=crop"
+---
+
+<script type="application/ld+json">
+{`
+{
+  "@context": "https://schema.org",
+  "@type": "TechArticle",
+  "headline": "2026 深度实践：使用 Ollama 与 Qdrant 构建企业级本地 RAG 知识库",
+  "image": [
+    "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=1200&h=630&fit=crop"
+  ],
+  "datePublished": "2026-03-20T10:00:00+08:00",
+  "dateModified": "2026-03-20T10:00:00+08:00",
+  "author": [{
+      "@type": "Person",
+      "name": "毛佳国",
+      "url": "https://singbox.eu.cc"
+    }]
+}
+`}
+</script>
+
+![Data Center Server Racks](https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=1200&h=630&fit=crop)
+
+在之前的文章中，我们探讨了如何在 Homelab 中通过 **Ollama** 运行本地的开源大语言模型。很多读者反馈：“跑起来是跑起来了，但它不知道我个人的东西啊！我该如何让这台 AI 读懂我那几个 G 的私人文档和代码仓库？”
+
+这正是 2026 年最火热的技术范式：**检索增强生成（RAG, Retrieval-Augmented Generation）**所能解决的问题。
+
+在过去的一周里，我在自己的服务器上彻底废弃了昂贵的 OpenAI API 方案，转向了纯本地化、物理隔绝的 RAG 管道建设。本文将详细讲授使用 [Ollama](https://ollama.com/) 配合 [Qdrant](https://qdrant.tech/) 这个顶级向量数据库的具体流程，并分享我踩过的一些大坑与真实的主观体验。
+
+## 为什么是 Qdrant？
+
+市面上的向量数据库很多，早些年大家爱用 ChromaDB 做实验，部分企业喜欢用 Milvus，甚至直接在 Postgresql 里面挂载 pgvector。
+
+我之所以在 2026 年坚持推荐 **Qdrant**，主要有两个原因：
+1. **基于 Rust 构建的恐怖性能**：Qdrant 的内存占有率和检索延迟，比 ChromaDB 这类 Python 原生的框架低到不知道哪里去了。在我的那台仅有 16GB 内存的小型 N100 迷你主机上，存入了近千万个 Token 切片，依然能够实现在毫秒级召回。
+2. **极简的部署体验**：一个无状态的 Docker 容器，一键启动，没有乱七八糟的 Zookeeper 依赖。
+
+## 架构和准备工作
+
+完整的 RAG 流水线包含以下三个阶段：
+1. **Embedding（嵌入计算）**：把我们的 TXT、Markdown 文档或者 PDF 转换成高维向量。
+2. **Indexing（索引存储）**：把上述生成的向量存入 Qdrant 数据库。
+3. **Retrieval & Generation（检索与生成）**：向 Ollama 提问时，先通过 Qdrant 检索出最相关的文本块，将文本块塞进 Prompt 里，再交给 Ollama 回答。
+
+### 部署 Qdrant
+
+我们可以简单地通过 Docker 拉起 Qdrant 实例：
+
+```bash
+docker run -p 6333:6333 -p 6334:6334 \
+    -v $(pwd)/qdrant_storage:/qdrant/storage:z \
+    qdrant/qdrant
+```
+
+## 实战案例：使用 LangChain + Python 构建通道
+
+这里向大家展示最核心的 Python 代码脚本逻辑（你需要预先在 Ollama 中下载好文本生成的模型和专门用于打向量的 Embedding 模型，比如 `nomic-embed-text`）：
+
+```python
+from langchain_community.document_loaders import DirectoryLoader
+from langchain_community.embeddings import OllamaEmbeddings
+from langchain_community.vectorstores import Qdrant
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+# 1. 配置本地的 Ollama Embedding 用于生成词向量
+embeddings = OllamaEmbeddings(model="nomic-embed-text", base_url="http://localhost:11434")
+
+# 2. 读取你的个人目录并进行切片
+loader = DirectoryLoader('./my_vault', glob="**/*.md")
+documents = loader.load()
+text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+docs = text_splitter.split_documents(documents)
+
+# 3. 极速写入 Qdrant (指定本地或者服务器端口)
+qdrant = Qdrant.from_documents(
+    docs,
+    embeddings,
+    url="http://localhost:6333",
+    collection_name="my_second_brain",
+)
+print("私有知识库建立完毕！")
+```
+
+有了上面的知识库引擎，我们就可以写一个小接口实现问答联调：
+
+```python
+from langchain_community.llms import Ollama
+
+llm = Ollama(model="qwen2.5:14b", base_url="http://localhost:11434")
+retriever = qdrant.as_retriever(search_kwargs={"k": 3})
+
+question = "根据我的笔记，我 2025 年推荐的服务器主板是什么？"
+relevant_docs = retriever.invoke(question)
+
+# 把检索到的证据和问题发给大模型
+context = "\n".join([doc.page_content for doc in relevant_docs])
+prompt = f"基于以下参考信息回答问题：\n\n{context}\n\n问题：{question}"
+
+response = llm.invoke(prompt)
+print(response)
+```
+
+## 遇到的坑与个人建议
+
+在使用纯私有化模型构建了长达半年后，这里给大家总结三个避坑指北：
+
+1. **Embedding 模型比主模型更重要**。不要用通用模型去打向量。我一开始随便用了一个旧版本模型生成向量，结果检索命中率极低。推荐在 2026 年直接使用专门精调过的双语 Embedding 模型（例如 bge-m3 或 nomic-embed-text），这是决定你 RAG 能够成功的**最核心因素**。
+2. **合理设置 Chunk Size (切片大小)**。一开始我急于求成，把每一条文本都切得很碎（100字），导致很多专业术语被从上下文中截断了，大模型拿到半截话直接“胡说八道”。建议采用 `500-1000` 字符作为初始块大小，并带上 `10%` 的 Overlap。
+3. **混合检索 (Hybrid Search) 才是未来**。目前仅使用向量相似度在应对专业代码片段（如搜索特定变量名 `AUTH_TOKEN_KEY`）时表现极差。有精力的朋友可以在 Qdrant 中同时开启 Sparse Vector (BM25 关键词匹配)，大幅提升准确率。
+
+在这个 AI 无孔不入的时代，有一套能在断网状态下熟知你全部数字痕迹的私人助手，这不仅是一种前沿的技术尝试，更是在这云厂商疯狂掠夺隐私的时代下的一种**数字无政府主义**自我保卫战。
