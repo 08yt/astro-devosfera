@@ -2,7 +2,7 @@
 
 这是一个基于 Astro 构建的专注于 [Sing-box](https://sing-box.sagernet.org/) 使用教程与配置分享的快速静态博客。
 
-👉 **[点击这里访问在线博客站点阅读教程：https://singbox.eu.cc/](https://singbox.eu.cc/)**
+👉 **[点击这里访问在线博客站点阅读教程：https://singbox.ygjc.cc/](https://singbox.ygjc.cc/)**
 
 我们的愿景是降低 Sing-box 这个号称“最强瑞士军刀”代理核心的学习门槛。通过提供从零开始的各种客户端教学、服务端 Docker 搭建脚本指引配合 Cloudflare 拯救 IP 的系列图文，帮助所有中文用户体验丝滑的网络环境保障！
 
@@ -16,7 +16,7 @@ Sing-box 由于舍弃了旧版的 dat 规则集，转而采用二进制的高性
 
 Heavily customized version of the [AstroPaper](https://github.com/satnaing/astro-paper) theme with a **Terminal/Cyberpunk** aesthetic, image galleries, global search modal, and dozens of visual and interactive improvements.
 
-**🌐 Live demo:** [singbox.eu.cc](https://singbox.eu.cc)
+**🌐 Live demo:** [singbox.ygjc.cc](https://singbox.ygjc.cc)
 
 ![Devosfera OG](public/devosfera-og.png)
 
@@ -274,7 +274,7 @@ All site configuration lives in `src/config.ts` (the `SITE` constant):
 
 ```ts
 export const SITE = {
-  website: "https://singbox.eu.cc/",
+  website: "https://singbox.ygjc.cc/",
   author: "毛佳国",
   desc: "A space where curiosity turns into code",
   title: "Devosfera",
