@@ -1,0 +1,448 @@
+---
+// Standalone Page: YGJC • BEST Link Navigation Hub
+// This page is completely self-contained, optimized for the Sing-box blog theme.
+---
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>YGJC • BEST | Sing-box 极客精选资源导航</title>
+    <meta name="description" content="YGJC BEST — 专注于 Sing-box 教程、高性价比翻墙机场、自建节点 VPS 与翻墙工具的精选资源导航。" />
+    <meta name="theme-color" content="#1f8e63" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <style>
+      :root {
+        --green-bg: #1f8e63;
+        --green-deep: #1b7f59;
+        --card: #ffffff;
+        --ink: #2c3a32;
+        --muted: #8c9690;
+        --line: #ededed;
+        --accent: #20a174;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft Yahei", "Noto Sans SC",
+          system-ui, -apple-system, sans-serif;
+        font-size: 16px;
+        color: var(--ink);
+        background: linear-gradient(180deg, #1f8e63 0%, #1a7b56 100%);
+        min-height: 100vh;
+        overflow-x: hidden;
+        overflow-y: auto;
+      }
+
+      .wrap {
+        max-width: 660px;
+        margin: 0 auto;
+        padding: 24px 20px;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+      }
+
+      .card {
+        background: var(--card);
+        border-radius: 12px;
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.22);
+        overflow: hidden;
+        animation: rise 500ms ease-out both;
+        width: 510px;
+        height: auto;
+        display: flex;
+        flex-direction: column;
+      }
+
+      header {
+        padding: 16px 26px;
+        text-align: center;
+        border-bottom: 1px solid var(--line);
+        background: #ffffff;
+      }
+
+      .logo {
+        font-family: "Didot", "Bodoni 72", "Baskerville", "Times New Roman", serif;
+        letter-spacing: 4px;
+        font-size: 40px;
+        color: #ffffff;
+        margin-top: 0;
+        margin-bottom: 16px;
+        font-weight: bold;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+
+      .note {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 0;
+        padding: 10px 0;
+        width: 100%;
+        border-radius: 6px;
+        background: var(--green-bg);
+        color: #fff;
+        font-size: 18px;
+        font-weight: 500;
+        line-height: 1.15;
+        justify-content: center;
+        text-align: center;
+        box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+      }
+
+      .note .keycap {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.18);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        font-size: 14px;
+      }
+
+      .content {
+        padding: 12px 26px 16px;
+        display: block;
+        flex: 1;
+        overflow: visible;
+      }
+
+      .section {
+        padding: 14px 26px;
+        margin: 0 -26px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .section:first-of-type {
+        padding-top: 6px;
+      }
+
+      .section:last-of-type {
+        padding-top: 14px;
+        padding-bottom: 6px;
+        border-bottom: none;
+      }
+
+      .section:last-of-type .links {
+        padding: 2px 0;
+      }
+
+      .section h3 {
+        margin: 0 0 10px;
+        font-size: 16px;
+        color: var(--ink);
+        letter-spacing: 0.3px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+      }
+
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 10px;
+      }
+
+      .links a {
+        color: #0f9c6a;
+        text-decoration: none;
+        font-size: 15px;
+        font-weight: 500;
+        font-style: italic;
+        line-height: 1.45;
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 14px;
+        border: 1px solid currentColor;
+        border-radius: 999px;
+        background: #ffffff;
+        transition: all 0.2s ease;
+      }
+
+      .links .link-meta {
+        flex-basis: 100%;
+        display: block;
+        margin-top: 6px;
+        line-height: 1.45;
+        padding: 1px 0;
+        font-weight: 600;
+      }
+
+      .notice {
+        line-height: 1.6;
+        padding: 2px 0;
+        display: flex;
+        align-items: center;
+        white-space: nowrap;
+      }
+
+      .notice .normal {
+        color: var(--ink);
+      }
+
+      .links a.alt {
+        color: #23a0ce;
+      }
+
+      .links a.warn {
+        color: #ff3b30;
+      }
+
+      .links a.gold {
+        color: #b88a1e;
+      }
+
+      .links a.purple {
+        color: #6f56c9;
+      }
+
+      .links a.teal {
+        color: #0f9f8a;
+      }
+
+      .links a:hover {
+        text-decoration: none;
+        background: #f4faf7;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+      }
+
+      .links a.alt:hover {
+        background: #f3fafd;
+      }
+
+      .links a.warn:hover {
+        background: #fff5f5;
+      }
+
+      .links a.gold:hover {
+        background: #fffdf5;
+      }
+
+      .links a.purple:hover {
+        background: #f8f6ff;
+      }
+
+      .links a.teal:hover {
+        background: #f2fcfb;
+      }
+
+      .link-item a:hover {
+        color: var(--green-900);
+      }
+
+      .link-meta {
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      .status {
+        margin-top: 14px;
+        font-size: 15px;
+        color: var(--muted);
+      }
+
+      footer {
+        color: #e9fff5;
+        font-size: 14px;
+        text-align: center;
+        line-height: 1.2;
+        margin-top: 12px;
+        opacity: 0.85;
+      }
+
+      @keyframes rise {
+        from {
+          transform: translateY(24px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      @media (max-width: 640px) {
+        body {
+          overflow: auto;
+        }
+
+        .wrap {
+          padding: max(env(safe-area-inset-top), 16px) clamp(8px, 3vw, 14px)
+            clamp(8px, 2vh, 16px);
+          gap: clamp(8px, 1.5vh, 16px);
+          justify-content: flex-start;
+        }
+
+        .logo {
+          font-size: clamp(24px, 7vw, 34px);
+          letter-spacing: clamp(1px, 0.8vw, 2px);
+          margin-bottom: clamp(4px, 1vh, 8px);
+        }
+
+        .card {
+          width: min(94vw, 510px);
+          height: auto;
+          min-height: auto;
+          border-radius: 10px;
+        }
+
+        header {
+          padding: clamp(10px, 1.5vh, 14px) clamp(8px, 3vw, 12px);
+        }
+
+        header,
+        .content,
+        footer {
+          padding-left: clamp(12px, 4vw, 20px);
+          padding-right: clamp(12px, 4vw, 20px);
+        }
+
+        .content {
+          padding: clamp(6px, 1.2vh, 10px) clamp(12px, 4vw, 20px);
+          overflow: visible;
+        }
+
+        .section {
+          padding: clamp(8px, 1.5vh, 14px) clamp(12px, 4vw, 20px);
+          margin: 0 calc(-1 * clamp(12px, 4vw, 20px));
+        }
+
+        .section h3 {
+          font-size: clamp(13.5px, 3.8vw, 15px);
+          margin-bottom: clamp(6px, 1vh, 10px);
+        }
+
+        .links a {
+          font-size: clamp(13px, 3.7vw, 14.5px);
+          line-height: 1.3;
+          padding: 3px 12px;
+        }
+
+        .note {
+          width: 100%;
+          justify-content: center;
+          white-space: nowrap;
+          font-size: clamp(13px, 3.5vw, 15px);
+          padding: clamp(6px, 1vh, 8px) 0;
+          gap: clamp(10px, 6vw, 24px);
+        }
+
+        .links {
+          gap: clamp(6px, 1vh, 8px) clamp(6px, 3vw, 10px);
+        }
+
+        .notice {
+          white-space: normal;
+        }
+
+        footer {
+          font-size: 12px;
+          line-height: 1.1;
+          margin: 4px 0;
+        }
+      }
+
+      @media (max-width: 640px) and (min-height: 820px) {
+        .content {
+          overflow: visible;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .card {
+          animation: none;
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <div class="logo">YGJC•BEST</div>
+      <section class="card" aria-live="polite">
+        <header>
+          <div class="note" role="note">
+            <span>请使用浏览器快捷键收藏</span>
+            <span class="keycap">Ctrl + D</span>
+          </div>
+        </header>
+
+        <div class="content">
+          <section class="section">
+            <h3>🚀 推荐机场</h3>
+            <div class="links">
+              <a class="warn" href="https://api.efanapi.com/aff.php?aff=6738" target="_blank" rel="noopener">饿饭CC云机场（老牌高性价比，推荐月/季付）</a>
+            </div>
+          </section>
+
+          <section class="section">
+            <h3>🪵 自建梯子节点</h3>
+            <div class="links">
+              <span class="link-meta">低阶 · VPS</span>
+              <a class="teal" href="https://app.cloudcone.com/?ref=14255" target="_blank" rel="noopener">cloudcone</a>
+              <a class="alt" href="https://my.racknerd.com/aff.php?aff=19965" target="_blank" rel="noopener">racknerd</a>
+
+              <span class="link-meta">中阶 · VPS</span>
+              <a class="gold" href="https://bandwagonhost.com/aff.php?aff=80697" target="_blank" rel="noopener">搬瓦工</a>
+              <a class="purple" href="https://www.dmit.io/aff.php?aff=17906" target="_blank" rel="noopener">DMIt 大妈</a>
+
+              <span class="link-meta">保姆级搭建教程</span>
+              <a class="purple" href="https://x.com/fhwofjow51260/status/2035661513688797471" target="_blank" rel="noopener">如何自建翻墙节点？</a>
+              <a class="alt" href="https://www.hostbuf.com/" target="_blank" rel="noopener">FinalShell 官网</a>
+              <a class="blue" href="https://github.com/MHSanaei/3x-ui/blob/main/README.zh_CN.md" target="_blank" rel="noopener">3x-ui 中文说明</a>
+
+
+              <span class="link-meta">高阶 · 双 ISP 住宅 IP</span>
+              <a class="teal" href="https://www.voyracloud.com/?ref_code=U9G82EJQ" target="_blank" rel="noopener">voyracloud</a>
+              <a class="alt" href="https://share.cliproxy.com/share/tvsb7j2zc" target="_blank" rel="noopener">Cliproxy</a>
+            </div>
+          </section>
+
+          <section class="section">
+            <h3>🧰 代理工具</h3>
+            <div class="links">
+              <span class="link-meta">Win / Mac / Linux</span>
+              <a class="teal" href="https://clash-party.com/" target="_blank" rel="noopener">Clash-party</a>
+              <span class="link-meta">安卓</span>
+              <a class="gold" href="https://github.com/2dust/v2rayNG" target="_blank" rel="noopener">v2rayNG</a>
+              <span class="link-meta">iOS / iPad / mac</span>
+              <a class="purple" href="https://apps.apple.com/us/app/shadowrocket/id932747118" target="_blank" rel="noopener">小火箭（Shadowrocket）</a>
+
+              <span class="link-meta">免费小火箭账号</span>
+              <a class="teal" href="https://stymei.github.io" target="_blank" rel="noopener">stymei</a>
+              <a class="gold" href="https://id.bocchi.vip" target="_blank" rel="noopener">bocchi</a>
+              <a class="alt" href="https://ccbaohe.com/appleID/" target="_blank" rel="noopener">薄荷 AppleID</a>
+              <a class="purple" href="https://ids.ailiao.eu" target="_blank" rel="noopener">ailiao</a>
+            </div>
+          </section>
+
+          <section class="section">
+            <h3>📬 联系站长</h3>
+            <div class="links">
+              <a class="alt" href="https://x.com/Michaelsan91718" target="_blank" rel="noopener">X / Twitter</a>
+              <a class="purple" href="https://t.me/yiyige163" target="_blank" rel="noopener">Telegram（联系站长）</a>
+            </div>
+          </section>
+
+          <section class="section">
+            <div class="links">
+              <span class="link-meta notice">部分国内浏览器屏蔽网址，请安装 <span class="normal">Chrome</span> 或 <span class="normal">Brave Browser</span> 访问。</span>
+            </div>
+          </section>
+        </div>
+      </section>
+      <footer>© 2019–2026 YGJC.BEST. All Rights Reserved</footer>
+    </main>
+  </body>
+</html>
