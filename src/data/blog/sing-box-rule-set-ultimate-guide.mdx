@@ -1,0 +1,152 @@
+---
+title: "性能狂飙：2026 最新 Sing-box Rule Set（规则集）配置与本地编译/自动更新全攻略"
+author: "毛佳国"
+pubDatetime: 2026-06-17T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - 规则进阶
+  - 极客探索
+  - 配置转换
+description: "详解 Sing-box 签名核心技术：二进制规则集（Rule Set）。手把手教你如何配置本地与远程规则集，如何配置自动更新，以及如何进行规则集的本地编译，让客户端在极低内存下实现秒级分流。"
+---
+
+习惯了使用 Clash 或旧版 V2Ray 的朋友，在初次看到 **Sing-box** 的规则分流模块时，肯定会被一个新的概念吸引 —— **Rule Set（规则集）**。
+
+传统代理工具的分流，大多依赖体积庞大的纯文本列表（如几万行的 Clash YAML 规则集），或者笨重的 `geoip.dat` 与 `geosite.dat` 数据库。这导致每次启动软件时，客户端都要花费数秒来解析这些海量行文本，且会常驻占用上百 MB 昂贵的系统内存。
+
+而 Sing-box 引入的**二进制规则集（扩展名为 `.srs`）**彻底改变了这一切。它将海量规则提前编译为精简的二进制树，解析速度瞬间提升百倍，内存占用低至微乎其微。
+
+今天这篇进阶指南，将带你彻底玩转 Sing-box 的规则集，实现性能狂飙！
+
+---
+
+## 🧐 一、什么是 Rule Set（规则集）？二进制优势在哪？
+
+在 Sing-box 中，规则集分为两种形态：
+
+1.  **源文件（Source 文件，`.json` 格式）**：由人类编写的可读纯文本，里面包含域名、IP 段等数组。
+2.  **编译文件（Compile 文件，`.srs` 格式）**：由 Sing-box 核心将 JSON 原文件进行高性能二进制编译后生成的专属数据库。
+
+### 为什么首选 `.srs`？
+
+- **启动速度快**：二进制数据库免去了文本解析，客户端读取瞬间完成，实现毫秒级“秒开”。
+- **内存开销极低**：在路由器等内存仅有几百 MB 的低配设备上，使用 `.srs` 相比传统 Clash 规则能省下近 80% 的内存空间，避免系统因 OOM 频繁崩溃。
+- **高度模块化**：你可以把“国内直连（CN）”、“广告拦截（ADS）”、“AI分流（OpenAI）”分别划分为独立的 `.srs` 模块，按需调用。
+
+---
+
+## 🛠️ 二、如何在配置文件中定义与使用 `rule_set`
+
+在 Sing-box 配置文件 `config.json` 的**最顶层（与 `inbounds` 和 `outbounds` 并列）**，我们使用 `rule_set` 数组来声明我们需要加载的规则集。
+
+下面是推荐的声明范例（同时包含本地加载与远程 HTTP 自动更新）：
+
+```json
+{
+  "rule_set": [
+    {
+      "tag": "geosite-cn",
+      "type": "remote",
+      "format": "binary",
+      "url": "https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-cn.srs",
+      "download_detour": "proxy-auto-group",
+      "update_interval": "1d"
+    },
+    {
+      "tag": "geoip-cn",
+      "type": "remote",
+      "format": "binary",
+      "url": "https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geoip/geoip-cn.srs",
+      "download_detour": "proxy-auto-group",
+      "update_interval": "1d"
+    },
+    {
+      "tag": "geosite-ads",
+      "type": "local",
+      "format": "binary",
+      "path": "/etc/sing-box/rules/geosite-category-ads-all.srs"
+    }
+  ]
+}
+```
+
+### 💡 核心参数解析：
+
+- **`type`**: `remote` 表示从云端 HTTP 拉取；`local` 表示加载 VPS 本地或者软路由磁盘上的文件。
+- **`format`**: 统一设为 `binary`（二进制形式），配合后缀为 `.srs` 的文件。
+- **`download_detour`（关键）**: 远程下载时，**必须指定一个已激活的代理出站名称（如 `proxy-auto-group`）**。这样当规则库在 GitHub 无法直接连接时，SFI 会强制让下载流量走代理隧道，防止更新失败。
+- **`update_interval`**：设定自动更新的频率。如 `"1d"` 代表客户端在后台每隔 1 天自动重拉一次，完全免除人工维护。
+
+---
+
+## 🔀 三、在路由规则 `route.rules` 中引用
+
+声明好规则集后，我们在 `route.rules` 路由判断模块中，就可以极度清爽地通过 `rule_set` 进行标签引用了：
+
+```json
+{
+  "route": {
+    "rules": [
+      {
+        "rule_set": ["geosite-ads"],
+        "outbound": "block" // 广告拦截规则最先匹配，流向黑洞
+      },
+      {
+        "rule_set": ["geosite-cn", "geoip-cn"],
+        "outbound": "direct" // 国内域名与IP直接走直连
+      }
+    ],
+    "final": "proxy-auto-group" // 国外其余域名走代理
+  }
+}
+```
+
+使用这种架构，原本需要几万行规则塞满的配置文件，**现在只需要几十行就能完成终极分流**，文件结构清爽可读！
+
+---
+
+## 🔨 四、进阶：如何在本地编译自定义的 Rule Set (JSON -> SRS)
+
+如果您需要根据自己的工作需要（比如公司内网 IP 阻断、特定私人域名分流），定制一套独一无二的规则集，你可以直接使用 Sing-box 核心命令行在本地快速编译：
+
+### 1. 编写自定义 JSON 源文件
+
+新建一个文本文件，保存为 `my-rules.json`：
+
+```json
+{
+  "version": 1,
+  "rules": [
+    {
+      "domain": ["mycompany.com", "internalserver.net"],
+      "domain_suffix": [".internal.mycompany.com"],
+      "ip_cidr": ["10.199.0.0/16"]
+    }
+  ]
+}
+```
+
+### 2. 使用命令行进行高性能二进制编译
+
+打开终端，执行以下 Sing-box 编译指令：
+
+```bash
+sing-box rule-set compile my-rules.json -o my-rules.srs
+```
+
+执行成功后，终端会秒级生成一个二进制的 `my-rules.srs` 文件。您只需将其拷贝至客户端对应的 rules 目录下，并在 `rule_set` 中使用 `"type": "local"` 引入即可使用。
+
+---
+
+## 🏁 结语与更新安全屏障
+
+远程拉取云端规则集（通常托管于 GitHub Releases）是保持分流规则库最新的最佳范式。然而，在日常实际运行中，如果您的**客户端首次启动时由于代理未完全建连，导致下载 GitHub 规则集文件超时卡死，会让整个代理网络陷于瘫痪。**
+
+因此，配置一个高稳定性、连接快速、且能稳定加速 GitHub API 等资源的节点源是极其关键的保障。
+
+推荐参考本站对老牌高性价比商家的深度评测：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)。其提供的高带宽专线和经过净化的优质接入 IP，能确保您的 Sing-box 客户端在每日凌晨自动重载规则集时，以绝对稳定的通路瞬时完成数据拉取，保障您的全天候极速体验。
+
+---
+
+_（相关工具导航：如果您在配置过程中需要寻找更适合的低成本自建 VPS、免费公共苹果账号或者最新的客户端下载，请访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速搞定所有极客工具！）_
