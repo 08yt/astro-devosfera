@@ -1,0 +1,176 @@
+---
+title: "无缝平替：从 Clash Verge Rev 迁移至 Sing-box 客户端保姆级教程（JSON 配置平滑过渡）"
+author: "毛佳国"
+pubDatetime: 2026-06-10T10:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - 基础入门
+  - 配置转换
+  - 客户端
+description: "Clash Verge 停更或不再满足你的极速网速需求？手把手带你从 Clash 迁移至下一代 Sing-box 客户端，详解策略组、延迟测速组以及路由分流规则在 JSON 中的平替写法。"
+---
+
+随着 Clash 原版核心彻底停更，虽然目前社区有 Clash Verge Rev 等优秀套壳前端在苦苦支撑，但在网络底层的并发性能、内存占用以及对最前沿协议（如 Hysteria 2、TUIC v5、VLESS-Reality）的支持上，**基于 Go 原生开发、无套壳内核的 Sing-box 已经成为无可争议的下一代标配。**
+
+许多习惯了 Clash 界面化点击和优雅 YAML 语法的老玩家，在转投 Sing-box 时，面对一长串冷酷生涩的 JSON 配置代码，往往会感到无从下手。
+
+今天这篇保姆级教程，将用最通俗易懂的对比方式，带你将 Clash 配置文件无损“翻译”成 Sing-box 的 JSON 规则，助你完美平滑迁移！
+
+---
+
+## 🗺️ 一、核心概念对比：YAML 与 JSON 的映射关系
+
+在开始动手之前，我们先搞懂 Clash 和 Sing-box 在配置命名和结构上的映射关系。只要概念通了，迁移就完成了一半：
+
+| 配置功能         | Clash (YAML) 中的写法 | Sing-box (JSON) 中的平替    | 作用解释                           |
+| :--------------- | :-------------------- | :-------------------------- | :--------------------------------- |
+| **独立节点**     | `proxies:`            | `outbounds:` (配置节点详情) | 具体的节点 IP、端口和密码等        |
+| **手动策略组**   | `type: select`        | `type: selector`            | 提供手动切换节点或子策略组的菜单   |
+| **自动测速组**   | `type: url-test`      | `type: urltest`             | 自动测速并静默切换至延迟最低的节点 |
+| **路由分流规则** | `rules:`              | `route.rules:`              | 决定哪些流量走代理、哪些直连或拦截 |
+| **DNS配置**      | `dns:`                | `dns:`                      | 防止 DNS 投毒与泄露的核心模块      |
+
+---
+
+## 🛠️ 二、核心模块平替配置模板
+
+接下来我们进入实战，看看如何把 Clash 的规则转换成 Sing-box 的 JSON 代码。
+
+### 1. 策略组（Proxy Groups）平替
+
+在 Clash 中，我们习惯配置一个 `Proxy` 手动策略组和一个 `Auto` 自动测速组：
+
+```yaml
+# Clash YAML 格式
+proxy-groups:
+  - name: 🚀 节点选择
+    type: select
+    proxies:
+      - ⚡ 自动选择
+      - 节点A
+      - 节点B
+  - name: ⚡ 自动选择
+    type: url-test
+    proxies:
+      - 节点A
+      - 节点B
+    url: http://cp.cloudflare.com/generate_204
+    interval: 300
+```
+
+在 **Sing-box JSON** 中，它们应该这样写：
+
+```json
+// Sing-box JSON 格式
+{
+  "outbounds": [
+    {
+      "type": "selector",
+      "tag": "🚀 节点选择",
+      "outbounds": ["⚡ 自动选择", "节点A", "节点B"]
+    },
+    {
+      "type": "urltest",
+      "tag": "⚡ 自动选择",
+      "outbounds": ["节点A", "节点B"],
+      "url": "http://cp.cloudflare.com/generate_204",
+      "interval": "5m"
+    }
+  ]
+}
+```
+
+> 💡 **避坑细节：**
+>
+> - Clash 中的 `type: select` 对应 Sing-box 的 `type: selector`（多个字母 `or`）。
+> - Sing-box 中的 `interval`（测速间隔）是带时间单位的字符串，如 `"5m"`（5分钟）或 `"300s"`，而在 Clash 中则是纯数字 `300`。
+
+---
+
+### 2. 路由规则（Rules）平替
+
+在 Clash 中，分流规则基于域名和 IP 进行匹配：
+
+```yaml
+# Clash YAML 格式
+rules:
+  - DOMAIN-SUFFIX,google.com,🚀 节点选择
+  - GEOSITE,cn,DIRECT
+  - GEOIP,cn,DIRECT
+  - MATCH,🚀 节点选择
+```
+
+在 **Sing-box JSON** 中，路由模块更加聚焦，结构也更清晰：
+
+```json
+// Sing-box JSON 格式
+{
+  "route": {
+    "rules": [
+      {
+        "domain_suffix": [".google.com"],
+        "outbound": "🚀 节点选择"
+      },
+      {
+        "geosite": ["cn"],
+        "outbound": "direct"
+      },
+      {
+        "geoip": ["cn"],
+        "outbound": "direct"
+      }
+    ],
+    "final": "🚀 节点选择"
+  }
+}
+```
+
+> 💡 **配置优化小贴士：**
+>
+> - Sing-box 中的 `domain_suffix` 匹配时，域名最前面的点 `.` 建议带上（如 `".google.com"`），能获得更精准的子域名泛解析。
+> - Clash 中的末尾兜底规则 `MATCH` 在 Sing-box 中被优雅地替换为了 `route.final` 字段。
+
+---
+
+## 🪄 三、一键平滑迁移的两种黑魔法
+
+如果您手里的节点极多，逐行手写配置显然不切实际。这里推荐两个最实用的“一键转换”迁移方案：
+
+### 方案 A：神级开源工具 Subconverter
+
+如果您只拿到了机场提供的原始 Clash YAML 订阅链接：
+
+1. 复制你的 Clash 订阅链接地址。
+2. 访问我们推荐的安全在线转换面板（如 `sub.v1.mk` 或 `api.nameless13.com`）。
+3. 粘贴订阅，目标客户端滑到底选择 **`sing-box`** 格式，一键生成。
+4. 复制生成的全新 JSON 链接导入您的客户端。
+   _(注：如果对节点密码安全性有极高要求，建议阅读我们的进阶教程 [《使用 Subconverter 本地 Docker 离线安全转换指南》](/posts/sing-box-subconverter-guide/)。)_
+
+### 方案 B：使用支持原生转换的现代客户端
+
+一些基于 Sing-box 核心开发的第三方 GUI 客户端（如 **Hiddify**）拥有极其强悍的“本地翻译”引擎。你只需直接将原本的 Clash 订阅链接粘贴进去，客户端会在本地不依赖任何云端接口，自动将其转换为符合最新 Sing-box 规范的 JSON 配置，堪称最完美的无感迁移。
+
+---
+
+## ⚖️ 避坑建议：如何避免配置错误？
+
+1.  **小心 `Flow` 溢出错误**：如果您从 Clash 配置文件中直接复制 VLESS Reality 节点的信息，请检查 `flow` 字段。Sing-box 仅对直接出站支持 `xtls-rprx-vision`，如果您中途套了 Cloudflare CDN 中转，请务必将 `flow` 字段保持留空（`""`），否则会导致节点握手无限报错。
+2.  **DNS 泄漏问题**：Clash 的分流往往依靠全局 DNS 拦截，而 Sing-box 对解析权限有更严格的分层。如果您发现迁移后无法打开部分受阻网站，推荐参考我们的另一篇深度指南：[《安全无痕冲浪：Sing-box 终极 DNS 配置与防泄露方案》](/posts/sing-box-dns-leak-fakeip/)。
+
+> 💡 **原生配置一键接入小贴士：**
+> 手动做订阅转换虽然方便，但难免遇到转换接口挂掉或规则解析错位的情况。**最省心的方式，是直接使用原生在后台提供 Sing-box 专属 JSON 订阅的商业服务商。**
+>
+> 可以参考本站的深度评测文章：[《“饿饭CC云”怎么样？2026 最新评测》](/posts/efan-cc-cloud-review/)。饿饭CC云不仅提供超高带宽和多国流媒体解锁节点，其后台还原生支持一键导出 Sing-box 专属配置文件，省去了中间转换的全部繁琐步骤，是您迁移过程中的最佳省心拍档。
+
+---
+
+## 🏁 结语
+
+从 Clash 迁移到 Sing-box 表面上面临着“语法转换”的阵痛，但一旦您的配置大功告成，Sing-box 那清爽的内存占用、极速的并发性能和全平台一致的表现，一定会让您直呼“真香”！
+
+赶紧按照教程，给你的设备换上全新的 Sing-box 动力源吧！
+
+---
+
+_（本文关联阅读：如果您在迁移过程中需要寻找更适合的低成本云服务器、免费小火箭账号或更丰富的客户端下载，请查阅我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，一站式搞定您所需要的所有科学上网工具！）_

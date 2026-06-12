@@ -1,84 +1,200 @@
 ---
-title: "最新协议尝鲜：在 Sing-box 中配置 Hysteria2 或者 TUIC V5 协议的详细步骤"
+title: "双剑合璧：2026 最新 VPS 原生利用 Sing-box 部署最新 TUIC v5 + Hysteria 2 双协议高能极速节点实战"
 author: "毛佳国"
-pubDatetime: 2026-03-08T16:35:00.000+08:00
-featured: false
+pubDatetime: 2026-06-12T10:00:00.000+08:00
+featured: true
 draft: false
 tags:
   - 服务器搭建
-  - 新协议
-description: "紧跟新协议热点，在拥挤的高峰期抢占带宽。教你在 Sing-box 中同时配置这两大 UDP 加速神器并测速对比。"
+  - TUIC
+  - Hysteria
+description: "追求极致丢包抵抗与爆满下行宽带？手把手教你如何在海外 VPS 上，利用单个 Sing-box 进程同时开启 TUIC v5 和 Hysteria 2 两大 UDP 协议大入站，实现共享 TLS 证书的高能双加速部署。"
 ---
 
-很多朋友觉得，“科学上网”速度慢是因为机场节点不够强、或者买的 VPS 线路不好（没走 CN2 GIA 高级路线）。
+在跨国长距离传输（特别是晚高峰国际骨干网拥堵）的场景下，基于传统 TCP 握手的协议（如原版 VLESS、Trojan 等）一旦遇到严重丢包，其速度便会雪崩式降速。这是因为 TCP 的拥塞控制算法默认会判定“线路堵塞，我得慢点发”。
 
-其实，还有一种“物理外挂”能解救那些丢包严重的普通线路：那就是基于 UDP 开发的新一代抗跌穿协议：**Hysteria2** 与 **TUIC**。 
+为了打破这一物理限制，开源社区诞生了基于 UDP / QUIC 协议栈开发的两大“性能猛兽” —— **Hysteria 2** 与 **TUIC v5**。它们采用主动暴力发包和极速丢包重传策略，能在掉线率高达 30% 的恶劣网络下硬生生跑满你的物理宽带上限！
 
-得益于 Sing-box 全协议兼容的特性，我们不用再安装它们繁杂的官方核心，只需要像之前一样，在 JSON 配置文件里添加这么一小段，就能享受“暴力发包”的快感。
+今天这篇极客指南，将手把手带你在一台海外 VPS 上，使用**单个 Sing-box 服务端进程同时开通这两个顶级 UDP 协议入站**，并共享同一个 TLS 证书，实现双协议并存与加速互补！
 
-## Table of contents
+---
 
-## 为什么 UDP 协议比传统 TCP 快那么多？
+## 🧐 为什么选用 “TUIC v5 + Hysteria 2” 的黄金组合？
 
-传统的 Shadowsocks 或 VLESS 代理走的通常是基于 TCP 的连接。TCP 讲究“有借有还，丢了就重传”的可靠握手。但在过境海缆这种复杂的长距离跨国网络中，每丢一次包都会让 TCP 速度大砍一截。这是因为 TCP 的拥塞控制机制认为：“线路堵了，我发慢点吧”。这叫传统阻塞算法的劣势。
+- **Hysteria 2（残暴发包）**：自带自主研发的 BBR 拥塞控制，不讲道理地吃满宽带。最适合大流量下片、4K 蓝光流媒体看剧。
+- **TUIC v5（0-RTT 极低延迟）**：基于标准的 QUIC 协议重构，专注极速建连握手。最适合高频打开海量国外网页、日常聊天与低延迟打游戏。
 
-而基于 UDP 开发的这俩兄弟（Hysteria、TUIC），它们的设计更像高速路霸：“即使堵车了，我依然按最高速率狂发数据给你；如果丢了，我就疯狂补全”。
-这造就了这套协议能在晚高峰那些掉线率极高的普通 VPS 网络下，硬生生拉满你的手机带宽！
+把两者同时部署在 VPS 上，你可以在客户端（如 Sing-box 客户端）中混合加入这两个出站策略，根据具体使用场景进行精细化分流调度。
 
-## Hysteria2：残暴的宽带救星
+---
 
-Hysteria（现在是V2版本）通过自定义拥塞控制在 UDP 上狂堆传输效率。
+## 🛠️ 第一步：准备工作与 VPS 防火墙放行
 
-### Sing-box 客戶端怎么连 Hysteria2？
-当你拿到了机场分享的 Hy2 参数（IP、端口和密码等）后，在 `outbounds` 里新增这一段即可连接：
+1. **放行 UDP 端口**：
+   TUIC 与 Hysteria 2 全程基于 UDP 传输。登录你的云服务商控制台后台防火墙，**必须开启 UDP 协议的相应大端口**。本教程以放行 `8443` 和 `8444` 的 UDP 与 TCP 端口为例。
+2. **准备一个解析好的域名**：
+   准备一个二级域名（如 `node.yourdomain.com`），将其 `A 记录` 解析到你的 VPS 真实 IP。由于这两种协议都是基于合法的 TLS 进行连接握手的，它们**必须加载一个真实合规的证书，否则会遭遇阻断**。
 
-```json
-"outbounds": [
-  {
-    "type": "hysteria2",
-    "tag": "proxy-hy2",
-    "server": "us-hy2.example.com",     // 服务端 IP 或域名
-    "server_port": 8443,                // 开放的 UDP 端口
-    "up_mbps": 50,                      // 本地上传带宽（建议如实填写）
-    "down_mbps": 100,                   // 本地下载带宽上限
-    "password": "this-is-a-strong-password",
-    "tls": {
-      "enabled": true,
-      "server_name": "www.apple.com"    // SNI 伪装域名（如果遇到封锁可调整该值）
-    }
-  }
-]
+---
+
+## 🔒 第二步：使用 acme.sh 快速申请免费 SSL 证书
+
+在你的 VPS 服务器上，我们使用非常简单且全自动的 acme.sh 工具来为我们的解析域名申请一张免费的 Let's Encrypt 证书：
+
+```bash
+# 1. 安装 acme.sh 并注册邮箱
+curl https://get.acme.sh | sh -s email=myemail@gmail.com
+source ~/.bashrc
+
+# 2. 停止 VPS 原有监听 80 端口的服务（如 Nginx），释放端口
+# 3. 使用独立模式一键申请证书
+acme.sh --issue -d node.yourdomain.com --standalone
+
+# 4. 创建专用存放目录，并将证书安装复制过去
+mkdir -p /etc/sing-box/certs/
+acme.sh --install-cert -d node.yourdomain.com \
+  --key-file /etc/sing-box/certs/private.key \
+  --fullchain-file /etc/sing-box/certs/cert.pem
 ```
 
-## TUIC (V5)：基于 QUIC 的丝滑之选
+大功告成！现在你的 VPS 的 `/etc/sing-box/certs/` 目录下已经生成了私钥 `private.key` 和证书链 `cert.pem`。
 
-TUIC 是由一套被称为下一代网络标准 QUIC 改进而来的协议。与 Hysteria 的“狂放”不同，它更专注于 0-RTT（零往返时间建连）的极低延迟。
-在打开海外网页的瞬间，TUIC 的响应速度几乎无法察觉代理的存在。它的 V5 版本彻底消除了早期不稳定的 Bug，在 Sing-box 下同样完美支持。
+---
 
-### Sing-box 客户端配置 TUIC V5：
+## 🚀 第三步：配置 Sing-box 服务端实现“双协议监听”
+
+编辑服务端的 `/etc/sing-box/config.json` 配置文件。我们将同时声明两个 UDP 监听入站，共用刚才申请的 TLS 证书：
 
 ```json
-"outbounds": [
-  {
-    "type": "tuic",
-    "tag": "proxy-tuic",
-    "server": "hk-tuic.example.com",
-    "server_port": 8443,
-    "uuid": "xxxxx-xxxxxx-xxxx-xxxxxx",
-    "password": "mypassword",
-    "congestion_control": "bbr",         // 推荐开启 BBR 加速
-    "udp_relay_mode": "native",
-    "tls": {
-      "enabled": true,
-      "server_name": "example.com"
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    {
+      "type": "hysteria2",
+      "tag": "hy2-in",
+      "listen": "::",
+      "listen_port": 8443,
+      "users": [
+        {
+          "password": "your-strong-password-for-hy2"
+        }
+      ],
+      "tls": {
+        "enabled": true,
+        "key_path": "/etc/sing-box/certs/private.key",
+        "cert_path": "/etc/sing-box/certs/cert.pem"
+      }
+    },
+    {
+      "type": "tuic",
+      "tag": "tuic-in",
+      "listen": "::",
+      "listen_port": 8444,
+      "users": [
+        {
+          "uuid": "your-uuid-goes-here-for-tuic",
+          "password": "your-password-for-tuic"
+        }
+      ],
+      "congestion_control": "bbr",
+      "udp_relay_mode": "native",
+      "tls": {
+        "enabled": true,
+        "key_path": "/etc/sing-box/certs/private.key",
+        "cert_path": "/etc/sing-box/certs/cert.pem"
+      }
     }
-  }
-]
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}
 ```
 
-## 到底选哪个好？一些实战建议
+配置写入后，重启服务端的 Sing-box 进程：
 
-这两者都是使用 UDP 的神器，在使用之前你必须在 VPS 供应商的防火墙面板里放行你的大端口。**记住：必须是放行 UDP 端口，不仅仅是 TCP！**
+```bash
+systemctl restart sing-box
+```
 
-- **追求稳定开网页**：由于 TUIC 基于成熟的 QUIC 标准网络，更温和稳定，推荐建站或全家翻墙使用。
-- **追求极速跑满下片/看4K**：只要运营商没有专门针对你的 UDP 进行“QoS (流量限制)”，Hysteria2 可以做到无视丢包。但如果你发现跑了几分钟突然断网几分钟，那一定是当地运营商看不下去帮你“掐线”了。这叫“UDP QoS”。遇到这个情况，请老实返回 VLESS 或使用 TUIC 进行平衡。
+通过 `systemctl status sing-box` 确认服务运行正常。
+
+---
+
+## 🛠️ 第四步：编写客户端出站配置
+
+在你的本地 Sing-box 客户端配置文件中，写入以下两个出站策略。把它们装进你的 `selector` 或是 `urltest` 策略组中，即可享用这两颗超级钢炮：
+
+### 1. Hysteria 2 客户端配置：
+
+```json
+{
+  "type": "hysteria2",
+  "tag": "out-hy2",
+  "server": "node.yourdomain.com",
+  "server_port": 8443,
+  "password": "与服务端一致的密码",
+  "up_mbps": 50, // 推荐如实填写你当地宽带的物理上传带宽，便于BBR精准拥塞调优
+  "down_mbps": 100, // 物理下载带宽上限
+  "tls": {
+    "enabled": true,
+    "server_name": "node.yourdomain.com"
+  }
+}
+```
+
+### 2. TUIC v5 客户端配置：
+
+```json
+{
+  "type": "tuic",
+  "tag": "out-tuic",
+  "server": "node.yourdomain.com",
+  "server_port": 8444,
+  "uuid": "与服务端一致的 UUID",
+  "password": "与服务端一致的密码",
+  "congestion_control": "bbr",
+  "udp_relay_mode": "native",
+  "tls": {
+    "enabled": true,
+    "server_name": "node.yourdomain.com"
+  }
+}
+```
+
+---
+
+## ⚠️ 终极警惕：UDP QoS 流量掐断与专线救赎
+
+既然这两大协议残暴暴力，是否就能彻底代替 TCP 协议节点呢？现实往往给您泼冷水：
+
+由于这俩兄弟在 UDP 上疯狂抢占和发送网络包，国内大部分省级运营商（特别是中国联通和中国电信）在发现您的 IP 端口有大流量且高并发的加密 UDP 包通过时，会触发运营商层面的 **UDP QoS (网络服务质量流量限速)**。
+
+_具体表现为：连接刚开启的头 1 分钟速度逆天，随后网速突然断流成 0、延迟爆表，过几分钟又恢复。这代表你的 UDP 已经被当地运营商“掐脖子”了。_
+
+> 💡 **解决 UDP QoS 的终极闭环方案：**
+> 如果您在自建 UDP 节点时遭遇了高频的 QoS 限速，或者您当地宽带对 UDP 进行直接阻断。**那么最好的变现互补出路就是购买走国内 IEPL/IPLC 内网专线的商业机场节点。**
+>
+> 内网专线在公网不走传统的 UDP 路径，而是走局域网内网光纤传输，不仅能彻底免疫国内运营商的 UDP 流量限制，还能获得极限 `20ms` 以内的极致延迟。
+>
+> 推荐阅读本站对老牌性价比厂商的深度评测文章：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)。
+>
+> 饿饭CC云所带的超稳定专线节点能完美在您的软路由和客户端中作为主/副线，与自建的 Hys2 形成最无敌的网络互补保障。
+
+---
+
+## 🏁 结语
+
+TUIC v5 和 Hysteria 2 双协议联合部署，是极客探索海外主机极限性能的最高体现。只要避开运营商限速的大坑，这两个“物理外挂”绝对会给你的观影和娱乐体验带来最深刻的震撼。
+
+快动起手来，释放你的 VPS 全部 UDP 战斗力吧！
+
+---
+
+_（相关工具导航：如果您在配置过程中需要寻找低至几美元一年的练手机器、免费小火箭账号或最新的代理工具，欢迎访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，一站式搞定你所需要的所有极客工具！）_
