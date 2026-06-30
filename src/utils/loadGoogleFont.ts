@@ -35,10 +35,10 @@ async function loadGoogleFonts(
   Array<{ name: string; data: ArrayBuffer; weight: number; style: string }>
 > {
   const fontsConfig = [
-    { name: "Noto Sans", font: "Noto+Sans", weight: 400, style: "normal" },
+    { name: "Noto Sans SC", font: "Noto+Sans+SC", weight: 400, style: "normal" },
     {
-      name: "Noto Sans",
-      font: "Noto+Sans",
+      name: "Noto Sans SC",
+      font: "Noto+Sans+SC",
       weight: 700,
       style: "normal",
     },
