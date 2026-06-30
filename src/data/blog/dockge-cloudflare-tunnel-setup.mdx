@@ -1,0 +1,158 @@
+---
+title: "轻量级 Docker 面板 Dockge 部署与 Cloudflare Tunnel 安全外网访问实战"
+author: "毛佳国"
+pubDatetime: 2026-06-26T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - Docker
+  - Homelab
+  - 内网穿透
+description: "深度解析全新一代轻量级 Docker Compose 可视化面板 Dockge。手把手教学如何利用 Docker 一键部署 Dockge，并结合 Cloudflare Tunnel 穿透内网，免公网 IP 与路由器端口映射，实现安全的 SSL 外网访问后台。"
+---
+
+对于热衷于搭建 **Homelab**（家庭实验室）或自建各种网络服务的极客玩家而言，**Docker Compose** 绝对是部署服务的黄金标准。
+
+然而，长期在 Linux 命令行下使用 `docker compose up -d` 手动编辑 YAML、查看日志和更新容器，时间久了难免感到繁复。很多朋友尝试过使用 **Portainer**，但它庞大臃肿的架构、复杂的权限设计以及“自建隔离数据库”（会导致在面板外修改的 compose 文件无法同步）往往让人望而却步。
+
+今天，我们将介绍一款专为 Docker Compose 打造的、极轻量且高颜值的可视化面板 —— **Dockge**。并结合 **Cloudflare Tunnel（内网穿透隧道）**，手把手教你如何实现**免公网 IP、免路由器端口映射、自动带 SSL 证书**地安全访问你的 Dockge 后台！
+
+---
+
+## 🌟 一、为什么选择 Dockge？
+
+**Dockge** 是由著名监控工具 _Uptime Kuma_ 的作者 Louis Lam 开发的全新开源作品。相比于 Portainer，Dockge 拥有以下致命吸引力：
+
+1.  **所见即所得的 Compose 编辑器**：Dockge 界面提供了一个非常现代的 YAML 双栏编辑器，左边修改参数，右边自动渲染容器拓扑。
+2.  **不绑定数据库，直读物理路径**：Dockge 所有的 Compose 配置文件都直接以物理文件夹形式保存在你的 VPS 或 NAS 硬盘上。这意味着你随时可以通过 SSH 终端手动修改文件，Dockge 会瞬间自动同步更新，绝不冲突。
+3.  **单页面操作，极其丝滑**：容器的启动、停止、重启、更新、查看日志、甚至打开终端交互，全部可以在一个页面上实时完成，毫无卡顿。
+4.  **支持 Agent 架构**：可以通过安装 Agent 统一管理多台远程服务器上的 Docker 容器。
+
+---
+
+## 🛠️ 二、Dockge 极简部署实操
+
+我们遵循 Dockge 官方的最佳实践，将所有的容器项目（Stacks）统一放置在 `/opt/stacks` 目录下。
+
+### 1. 创建工作目录
+
+登录你的服务器终端，创建存放 Dockge 数据与项目配置的文件夹：
+
+```bash
+mkdir -p /opt/stacks /opt/dockge
+cd /opt/dockge
+```
+
+### 2. 编写 `docker-compose.yml`
+
+在该目录下创建 `docker-compose.yml` 文件：
+
+```yaml
+version: "3.8"
+services:
+  dockge:
+    image: louislam/dockge:1
+    container_name: dockge
+    restart: always
+    ports:
+      - 5001:5001
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/app/data
+      - /opt/stacks:/opt/stacks
+    environment:
+      # 告诉 Dockge 你的 Stacks 项目存放的主目录
+      - DOCKGE_STACKS_DIR=/opt/stacks
+```
+
+### 3. 启动面板
+
+执行启动指令：
+
+```bash
+docker compose up -d
+```
+
+启动完成后，你可以通过浏览器访问 `http://<你的服务器IP>:5001`。首次访问会提示你创建管理员账号和密码，即可进入极其炫酷的 Dockge 管理后台！
+
+---
+
+## 🔒 三、进阶：利用 Cloudflare Tunnel 安全外网访问
+
+虽然 Dockge 非常好用，但它直接暴露在公网 `5001` 端口是非常危险的。一旦管理员密码泄露，黑客将直接获取你整台服务器的 Docker 控制权限（甚至通过挂载 `docker.sock` 提权获取宿主机 Root 权限）。
+
+常规的 Nginx 反向代理不仅需要你有公网 IP，还要在路由器做端口映射，并手动维护 SSL 证书。而 **Cloudflare Tunnel (CF Tunnel)** 彻底颠覆了这一切：它通过在宿主机内运行一个轻量级的 `cloudflared` 客户端，主动与 Cloudflare 边缘节点建立加密的双向通道。
+
+**它的优势是**：
+
+- **无需公网 IP**：即使是纯内网、大内网（如家庭宽带、校园网）也完美支持。
+- **免开任何入站端口**：防火墙可以关得死死的，阻断一切外部扫描。
+- **自动申请并配置 SSL 证书**：直接通过 CF 边缘节点实现强制 HTTPS。
+
+### 1. 在 Cloudflare 后台创建 Tunnel
+
+1. 登录 [Cloudflare Dashboard](https://dash.cloudflare.com/)，在左侧菜单栏进入 **Zero Trust** 面板。
+2. 依次点击 **Networks** -> **Tunnels** -> **Create a Tunnel**。
+3. 选择 **Cloudflare (Recommended)** 模式，给隧道起一个名字（如 `my-homelab`），点击保存。
+4. 系统会为您生成一行专属的运行命令，找到命令末尾的 `--token <一长串秘钥>`，**复制该 Token 值**。
+
+### 2. 在 Dockge 宿主机中部署 CF 容器
+
+我们把 CF 客户端作为常驻容器部署。打开你的 Dockge 后台，点击 **+ Compose**（新建项目），起名为 `cloudflare-tunnel`，将以下配置贴入编辑器中并点击启动：
+
+```yaml
+version: "3.8"
+services:
+  cf-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: cf-tunnel
+    restart: always
+    command: tunnel run --token YOUR_CLOUDFLARE_TUNNEL_TOKEN_HERE
+```
+
+_(请将 `YOUR_CLOUDFLARE_TUNNEL_TOKEN_HERE` 替换为您刚刚在 CF 后台复制的真实 Token)_
+
+启动该容器后，回到 Cloudflare Zero Trust 页面，你会看到 Tunnel 的状态变为了绿色的 **ACTIVE**。
+
+### 3. 映射 Dockge 后台域名
+
+在 CF Tunnel 页面点击 **Public Hostname** 标签卡，添加一条新域名映射：
+
+- **Subdomain**：例如输入 `dockge`（解析出 `dockge.yourdomain.com`）
+- **Domain**：选择你在 CF 托管的顶级域名
+- **Type**：选择 `HTTP`
+- **URL**：输入宿主机内网 IP 与端口，如 `172.17.0.1:5001`（或使用宿主机局域网 IP）
+
+点击保存后，Cloudflare 会在毫秒级完成 DNS 记录解析与 SSL 部署。现在，你就可以在全球任意地方，通过 `https://dockge.yourdomain.com` 安全无缝地访问你的 Docker 管理面板了！
+
+---
+
+## ⚡ 四、性能优化与硬件支撑选购
+
+由于 Dockge 本身极其轻量，其运行仅占用约 20-30MB 的内存，非常适合运行在各种云主机及小鸡上。
+
+然而，要保持 Docker 容器的 24 小时高可用性，底层的 **VPS 服务器稳定性** 是重中之重。如果您正在寻找适合部署个人 Docker 服务的高品质小鸡，我们建议根据您的需求进行选择：
+
+1.  **极致稳定性与国内直连**：推荐选择 **DMIT** 提供的 CN2 GIA 高阶线路 VPS，其稳定的中美直连骨干网能确保在部署 Docker Pull 镜像和外网访问 CF Tunnel 时，拥有极佳的响应速度。
+2.  **大带宽与多机房灵活迁移**：推荐选择老牌厂商 **搬瓦工 (BandwagonHost)**，其千兆 GIA 宽带能支持高并发流量的 Docker 服务。
+3.  **高性价比入门选购**：如果是新手用来折腾 Dockge 学习 Docker，**CloudCone** 与 **RackNerd** 每年只需十多美元的年付便宜 VPS 绝对是首选，性价比极其残暴。
+
+> [!TIP]
+> 欲查看最新各商家的真实回程路由评测与特惠通道，请参考本站发布的 [《极客第一只小鸡：2026 国外 VPS 选购与回程线路评测避坑指南》](/posts/vps-buying-guide-2026/)。
+
+---
+
+## 💡 终极安全避坑指南：开启 Cloudflare Access 保护
+
+通过 CF Tunnel 映射后的 Dockge 暴露在公网域名上，这相当于任何人只要知道了你的域名，就可以尝试暴力破解管理员密码。
+
+**在此强烈建议配合 Cloudflare Access 加上“第二道安全锁”**：
+在 CF Zero Trust 中进入 **Access** -> **Applications**，为你的 `dockge.yourdomain.com` 域名创建一条保护策略。你可以配置：
+
+- 只允许您指定的邮箱接收验证码登录；
+- 限制访问的 IP 必须为中国大陆或特定国家。
+  这样，任何人在访问你的 Dockge 域名时，必须首先通过 Cloudflare 边缘端提供的安全验证，极大地保护了你的自建 Homelab 资产安全。
+
+---
+
+_（相关极客资源：如果您在建站或搭建过程中需要获取更多开发工具、特惠域名或苹果账号，欢迎访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速获取最新极客工具！）_
