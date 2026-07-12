@@ -1,0 +1,196 @@
+---
+title: "自建安全加密 DNS：2026 使用 Sing-box 搭建 DoH/DoT 递归解析服务器与广告拦截实战"
+author: "毛佳国"
+pubDatetime: 2026-07-17T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - 服务器搭建
+  - DNS安全
+description: "详解如何使用 Sing-box 的高性能内建 DNS 模块与路由分流能力，自建安全、防劫持的 DoH/DoT 加密 DNS 服务器。整合规则集过滤广告并防御公网 DNS 放大攻击，让你的所有终端设备拥有极速纯净的解析体验。"
+---
+
+在互联网世界里，**DNS（域名系统）** 常常被称为“网络路标”。然而，绝大多数用户日常使用的默认 DNS（如运营商分发地址或公共 `114.114.114.114`），普遍面临两大严重隐患：
+
+1.  **隐私泄露**：传统的 DNS 查询完全以明文 UDP 报文形式发送，中间链路上的网络运营商（ISP）和监听设备可以轻易窥探你访问的所有网站域名。
+2.  **DNS 污染与劫持**：在跨境网络或特定内网下，DNS 请求极易被篡改污染，导致无法访问或跳转到虚假广告页面。
+
+为了解决这个问题，**DoH（DNS over HTTPS）** 与 **DoT（DNS over TLS）** 加密技术应运而生。它们将 DNS 请求打包在 HTTPS 或 TLS 加密协议中，从根本上杜绝了中间人监听与篡改。
+
+许多极客尝试自建 _AdGuard Home_ 或 _Pi-hole_，但由于其常驻内存大且过滤规则匹配效率较低，容易遭遇 OOM 崩溃。今天，我们将利用极其轻量、匹配效率惊人的 **Sing-box** 作为 DNS 服务端，在 VPS 上搭建一台私有加密的 DoH/DoT 服务器，实现安全、无污染且过滤广告的极致解析体验！
+
+---
+
+## 🧐 一、加密 DNS 的选择：DoH 还是 DoT？
+
+- **DoT (DNS over TLS)**：运行在特定的 `853` 端口，采用纯 TLS 通道传输。由于端口固定，它的**连接握手开销相对较低，解析更迅速**，适合移动端（如 Android 系统级私有 DNS）和路由器使用。
+- **DoH (DNS over HTTPS)**：运行在标准的 `443` 端口（混淆在标准的 HTTPS 流量中），具有**极强的穿透力**，几乎在任何防火墙严格控制的网络环境下都无法被识别阻断。
+
+今天，我们将介绍如何在一台 Linux 服务器上部署 Sing-box，并同时开启这两种解析服务。
+
+---
+
+## 🛠️ 二、服务端部署实操
+
+本教程以运行 Debian/Ubuntu 系统的海外 VPS 为例。
+
+### 1. 准备 SSL 证书
+
+因为是加密 DNS，你的 DoH/DoT 服务器必须有可信的 SSL 证书。建议使用 `acme.sh` 或 `Certbot` 为你的域名申请一张免费的 Let's Encrypt 证书：
+
+申请成功后，假设证书文件存放在：
+
+- 证书链：`/etc/ssl/dns.crt`
+- 私钥：`/etc/ssl/dns.key`
+
+### 2. 编写 Sing-box 服务端 `config.json`
+
+我们在 `/etc/sing-box/` 目录下创建配置文件：
+
+```json
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    // 1. DoT 监听模块 (Port 853)
+    {
+      "type": "direct",
+      "tag": "dot-in",
+      "listen": "::",
+      "listen_port": 853,
+      "tls": {
+        "enabled": true,
+        "server_name": "dns.yourdomain.com",
+        "certificate_path": "/etc/ssl/dns.crt",
+        "key_path": "/etc/ssl/dns.key"
+      }
+    },
+    // 2. DoH 监听模块 (Port 443)
+    {
+      "type": "direct",
+      "tag": "doh-in",
+      "listen": "::",
+      "listen_port": 443,
+      "tls": {
+        "enabled": true,
+        "server_name": "dns.yourdomain.com",
+        "certificate_path": "/etc/ssl/dns.crt",
+        "key_path": "/etc/ssl/dns.key"
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct-out"
+    }
+  ],
+  "dns": {
+    "servers": [
+      // 上游安全递归 DNS：使用 Cloudflare 和 Google 的加密 DoH 节点
+      {
+        "tag": "cloudflare-dns",
+        "address": "https://1.1.1.1/dns-query",
+        "detour": "direct-out"
+      },
+      {
+        "tag": "google-dns",
+        "address": "https://8.8.8.8/dns-query",
+        "detour": "direct-out"
+      }
+    ],
+    "rules": [
+      // 过滤广告域名：如果解析请求命中 geosite-ads，强行拦截返回空地址
+      {
+        "rule_set": ["geosite-ads"],
+        "server": "block"
+      }
+    ]
+  },
+  // 规则集声明（编译后的二进制 .srs 格式以实现极速匹配）
+  "rule_set": [
+    {
+      "tag": "geosite-ads",
+      "type": "remote",
+      "format": "binary",
+      "url": "https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-category-ads-all.srs",
+      "download_detour": "direct-out",
+      "update_interval": "1d"
+    }
+  ]
+}
+```
+
+### 3. 启动 Sing-box 服务
+
+运行并设置开机自启：
+
+```bash
+systemctl daemon-reload
+systemctl enable sing-box --now
+systemctl status sing-box
+```
+
+---
+
+## 🔒 三、防御公网 DNS 放大攻击与加固
+
+自建 DNS 暴露在公网上时，极易被扫描器扫出来。黑客会向你的服务器发送海量的欺骗性伪造 IP 查询，把你的 DNS 服务器当作放大器去攻击其他网站（即 **DNS 放大攻击/DDoS**）。
+
+### 1. 严格使用加密端口
+
+在我们的配置中，我们**只开启了 443 (DoH) 和 853 (DoT) 加密端口，彻底关闭了 53 UDP/TCP 明文端口**。这能直接过滤掉 99% 的自动化扫描攻击，因为绝大多数扫描器仅扫描标准的 53 端口。
+
+### 2. 部署防火墙限流 (iptables/ufw)
+
+为了防止同一个 IP 频繁建立 TLS 握手，可以使用 `ufw` 实施请求速率限制：
+
+```bash
+# 限制 853 端口 60 秒内同一 IP 建立新连接不得超过 20 个
+ufw limit proto tcp from any to any port 853
+# 限制 443 端口速率
+ufw limit proto tcp from any to any port 443
+```
+
+---
+
+## 📱 四、客户端配置：在你的终端设备上启用
+
+### 1. Android 设备
+
+Android 9 及以上系统原生支持全局 DoT (私有 DNS)：
+
+1. 进入系统 **设置** -> **网络与互联网** -> **私人 DNS**。
+2. 选择 **私人 DNS 提供商主机名**。
+3. 填入你的自建域名：`dns.yourdomain.com`，点击保存。
+
+### 2. iOS 设备
+
+iOS 原生支持 DoH/DoT。您可以使用免费工具（如 `dns-profile-creator` 等在线工具）生成一个包含了你 DoH 配置的 `.mobileconfig` 描述文件，下载后在 iPhone **设置** -> **已下载的描述文件** 中安装，即可全局生效。
+
+---
+
+## 🏎️ 五、自建 DNS 的服务器选型要点
+
+由于 DNS 解析是一项对**延迟极其敏感**的网络请求。本地哪怕只是多出 50ms 的解析延迟，浏览器在加载包含大量外链和图片的现代网页时，就会产生明显的“滞后卡顿感”。
+
+因此，部署自建加密 DNS 服务器的 **VPS 主机物理延迟与回程网络质量** 决定了该服务的成败。如果网络质量不佳，还不如直接使用公共 DNS。
+
+### 💡 极客服务器推荐
+
+如果您正在挑选能够提供高稳定、低延迟网络通路的主机商，可以从以下大厂入手：
+
+1.  **DMIT**：极致网络代表。拥有全线极度稳定的 CN2 GIA 高端直连网络，三网回程延迟极低，是承载 DNS 服务的梦幻服务器。
+2.  **搬瓦工 (BandwagonHost)**：经典大带宽，支持国内高端 GIA 专线并支持多机房自由切换。
+3.  **CloudCone / RackNerd**：高性价比的入门 VPS。虽然线路在晚高峰有所波动，但对于日常非重度网络使用，极具性价比。
+
+> [!TIP]
+> 更多有关 VPS 主机的延迟、回程路由测试与独家优惠折扣，欢迎阅读本站的 [《极客第一只小鸡：2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
+
+当然，如果你感觉在 VPS 上手动维护域名解析树、acme.sh 证书续签以及防火墙策略过于繁复，**直接使用商业级、配备专业网络运维团队的专线机场订阅** 是更轻松的做法。推荐参考 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)，其自带的智能 DNS 过滤分流能完全免除您的部署之忧。
+
+---
+
+_（相关极客导航：如果您在部署过程中需要注册域名、寻找免费的公共苹果账号或寻求更适合的代理工具配置，欢迎前往我们的 [《YGJC•BEST 极客精选资源导航》](/best/) 查看最新推荐！）_
