@@ -1,0 +1,194 @@
+---
+title: "终极多协议网关：2026 使用 Docker Compose 混合部署 VLESS-Reality 与 Hysteria 2 双通道节点"
+author: "毛佳国"
+pubDatetime: 2026-08-02T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - 服务器搭建
+  - Docker
+description: "手把手教学如何在一台 Linux 服务器上使用 Docker Compose 快速部署双通道代理网关。结合 VLESS-Reality（TCP 极致防探测）与 Hysteria 2（UDP 晚高峰暴力抢带宽），并详解如何在同一个 443 端口实现共存共荣。"
+---
+
+在网络代理的技术博弈中，**没有任何一种协议能够做到 100% 绝对完美**。不同的协议和传输层协议，在不同的网络环境与封锁时期表现迥异：
+
+- **VLESS-Reality (基于 TCP)**：防探测能力顶级，极其省电，非常适合宽带环境和防火墙大规模升级的敏感时期。但在晚高峰骨干网物理丢包率飙升时，速度会大幅受限。
+- **Hysteria 2 (基于 UDP/QUIC)**：抗丢包性能暴力，提取带宽能力无敌。但由于特征明显，部分省份运营商会对 UDP 流量进行无差别限速（QoS）甚至断流阻断。
+
+因此，最理性的极客部署方案是：**在一台云服务器上，同时部署这两个通道，实现优势互补、随时灾备切换的双通道网关。**
+
+更优雅的是，由于 TCP 与 UDP 端口完全独立互不冲突，我们甚至能**让它们同时使用同一个公网 443 端口**！今天我们将利用 **Docker Compose** 演示如何一键部署这套终极网关。
+
+---
+
+## 📐 一、网络拓扑与架构设计
+
+我们在一台 Linux VPS 上运行一个 Sing-box 容器：
+
+- **VLESS-Reality**：监听在 **TCP 443** 端口。它借用公网可信证书（如 `images.apple.com`），行为表现和常规的 TLS 1.3 网页浏览一致。
+- **Hysteria 2**：监听在 **UDP 443** 端口。由于它是 UDP，需要自己持有一张真实域名的有效 SSL 证书。我们可以为自己的二级域名（如 `hy2.yourdomain.com`）配置一张 Let's Encrypt 证书。
+
+> [!TIP]
+> **关于 443 端口复用**：
+> TCP 443 和 UDP 443 是两个完全独立的物理连接监听，两者共用同一个端口完全不会发生端口冲突，这能最大限度地伪装成常规的 HTTPS/QUIC (HTTP/3) 网页服务。
+
+---
+
+## 🛠️ 二、第一步：编写 Docker Compose 编排文件
+
+我们在服务器根目录下创建 `/opt/singbox` 目录：
+
+```bash
+mkdir -p /opt/singbox/certs
+cd /opt/singbox
+```
+
+将你的真实域名证书文件放置到 `/opt/singbox/certs/` 目录下：
+
+- 证书链文件：`/opt/singbox/certs/dns.crt`
+- 私钥文件：`/opt/singbox/certs/dns.key`
+
+在该目录下创建 `docker-compose.yml` 编排文件：
+
+```yaml
+version: "3.8"
+
+services:
+  singbox-gateway:
+    image: ghcr.io/sagernet/sing-box:latest
+    container_name: sing-box-gateway
+    restart: always
+    # 使用 host 网络模式，能够获取极高的网络吞吐，免除 Docker bridge 转发开销与延迟
+    network_mode: host
+    volumes:
+      - ./config.json:/etc/sing-box/config.json
+      - ./certs:/etc/sing-box/certs
+```
+
+---
+
+## 🛠️ 三、第二步：编写 Sing-box 服务端 `config.json`
+
+在相同目录下创建 `config.json` 配置文件：
+
+```json
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "inbounds": [
+    // 1. VLESS-Reality 入站监听 (TCP 443)
+    {
+      "type": "vless",
+      "tag": "vless-reality-in",
+      "listen": "::",
+      "listen_port": 443, // TCP 443
+      "users": [
+        {
+          "uuid": "your-vless-uuid-here",
+          "flow": "xtls-r-flow"
+        }
+      ],
+      "tls": {
+        "enabled": true,
+        "server_name": "images.apple.com", // Reality 伪装借用的真实域名
+        "reality": {
+          "enabled": true,
+          "handshake": {
+            "server": "images.apple.com", // 真实域名回源
+            "server_port": 443
+          },
+          "private_key": "your-reality-private-key-here", // 必须使用 sing-box generate reality-keypair 生成
+          "short_id": ["your-short-id-1", "your-short-id-2"]
+        }
+      }
+    },
+    // 2. Hysteria 2 入站监听 (UDP 443)
+    {
+      "type": "hysteria2",
+      "tag": "hysteria2-in",
+      "listen": "::",
+      "listen_port": 443, // UDP 443
+      "users": [
+        {
+          "password": "your-hysteria2-password-here"
+        }
+      ],
+      "tls": {
+        "enabled": true,
+        "server_name": "hy2.yourdomain.com", // 你的真实二级域名
+        "certificate_path": "/etc/sing-box/certs/dns.crt",
+        "key_path": "/etc/sing-box/certs/dns.key"
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}
+```
+
+### 💡 如何生成 Reality 秘钥对：
+
+你可以通过 Docker 命令行临时拉取镜像并生成私钥和公钥对：
+
+```bash
+docker run --rm ghcr.io/sagernet/sing-box:latest generate reality-keypair
+```
+
+将终端返回的 `PrivateKey` 写入服务端 `config.json` 的 `private_key` 字段，并将 `PublicKey` 妥善保存，用于写入你的客户端配置中。
+
+---
+
+## 🚀 四、第三步：一键运行与客户端连接
+
+### 1. 启动服务
+
+在终端执行以下启动命令：
+
+```bash
+docker compose up -d
+```
+
+启动后，您可以使用以下命令查看日志，确认两个协议均运行无误：
+
+```bash
+docker compose logs -f
+```
+
+### 2. 客户端配置建议
+
+在手机端或电脑端（如使用 Hiddify Next 或 Sing-box 官方 GUI），你可以分别添加这两条订阅配置：
+
+- **日常/流量敏感时期**：默认连接 **VLESS-Reality** 节点，保证绝高的 IP 安全存活率。
+- **晚高峰拥堵/视频下载**：切换至 **Hysteria 2** 节点，利用 UDP 强大的抗丢包算法，强行提取高吞吐带宽，彻底干掉视频转圈缓冲。
+
+---
+
+## 🏎️ 五、双通道对服务器硬件与线路的考量
+
+部署 Reality 与 Hysteria 2 混合网关，是一项对**服务器三网回程网络特征**高度依赖的业务：
+
+- VLESS Reality 极其看中 **TCP 延迟与低丢包率**；
+- Hysteria 2 极其看中 **三网运营商对 UDP 端口的宽容度与出口带宽**。
+
+因此，选购一台线路与硬件基础都极硬朗的云服务器至关重要。
+
+### 💡 优质服务器厂商选购推荐
+
+1.  **高端直连首选**：**DMIT** 的 CN2 GIA 高阶直连 VPS。其稳定的中美、中日专属带宽不仅有极低的物理丢包率（完美喂饱 Reality），其三网直连的 GIA 出口也是承载 Hysteria 2 的梦幻载体。
+2.  **老牌稳定性标杆**：**搬瓦工 (BandwagonHost)**。国内多网 GIA 优化，宽带高达千兆至万兆，适合承载大流量的混合双通道传输。
+3.  **入门首选性价比**：**CloudCone** 与 **RackNerd** 便宜小鸡，年付低至十几美元，非常适合折腾 Docker 和练习配置自建的 Homelab 玩家。
+
+> [!TIP]
+> 更多有关 VPS 主机的测速、回程路由测试与独家优惠折扣，欢迎阅读本站的 [《极客第一只小鸡：2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
+
+当然，如果你感觉在 VPS 上频繁调试 iptables 端口跳跃、管理 SSL 描述文件以及手动更换 IP 的过程过于折腾，**直接选择由专业团队维护的全专线 IPLC 商业中转机场是更为省心高效的一站式解法**。推荐阅读 [《“饿饭CC云”怎么样？2026 最新深度评测》](/posts/efan-cc-cloud-review/)，其自带的智能多协议分流及容灾系统，让您无需为任何维护操心。
+
+---
+
+_（极客资源精选：如果您在建站或搭建过程中需要注册便宜域名、寻找免费苹果账号下载辅助工具，请访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速获取所有极客必备资源！）_
