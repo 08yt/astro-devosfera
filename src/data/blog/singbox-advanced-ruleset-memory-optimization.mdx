@@ -1,0 +1,158 @@
+---
+title: "彻底淘汰旧版 GeoIP：2026 Sing-box 规则集（Rule Set）高级分流与内存极致优化指南"
+author: "毛佳国"
+pubDatetime: 2026-08-07T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - 规则进阶
+  - 网络优化
+description: "深入对比传统 V2Ray/Clash 的 DAT 数据库与 Sing-box 二进制规则集（Rule Set）的性能差异。手把手教你配置最新的 .srs 规则集并进行本地编译，让你的路由器与手机客户端启动秒开、内存占用直降 80%。"
+---
+
+在代理软件的发展历程中，分流规则一直是保证“国内直连、海外代理、广告拦截”的核心。
+
+许多习惯了旧版 V2Ray 或 Clash 的玩家，在迁移到 **Sing-box** 后，依然会在配置文件中引入笨重的 `geoip.dat` 与 `geosite.dat` 数据库文件。
+
+然而，在 2026 年的现代网络生态中，**继续使用旧版 `.dat` 文件是一种极大的资源浪费**：
+
+- 在内存仅有 256MB 或 512MB 的软路由（如 OpenWrt）、电视盒子或旧手机上，加载完整 `.dat` 库会导致代理软件在启动时**卡顿 3 至 10 秒**；
+- 常驻系统内存开销高达 **150MB 至 300MB**，极其容易引发系统 OOM（内存溢出）崩盘杀后台。
+
+今天，我们将带你彻底淘汰旧版 GeoIP，全面拥抱 Sing-box 的**二进制规则集（Rule Set，扩展名为 `.srs`）**，让你的客户端实现毫秒级秒开与极致内存优化！
+
+---
+
+## 🧐 一、为什么旧版 `.dat` 文件会被历史淘汰？
+
+传统的 `geoip.dat` 和 `geosite.dat` 本质上是将海量的域名列表和 IP CIDR 文本打包为 Protobuf 格式：
+
+1.  **启动解析开销巨大**：代理软件在每次启动或重载配置时，必须 CPU 全速运转，将几十 MB 的文本数据逐行解压并构建成内存查找树。
+2.  **全量加载不可拆分**：即便你只需要“国内 IP”和“常用广告拦截”，你也必须一次性加载包含全球所有国家 IP 和几万个无关域名的完整大包。
+
+### 🚀 二进制 Rule Set (`.srs`) 的革命性优势
+
+Sing-box 推出的 **`.srs` 二进制规则集**，在设计之初就彻底解决了上述痛点：
+
+- **提前二进制编译**：规则在云端或本地已被提前编译成精简的匹配树，客户端读取时免去任何文本解析，**启动速度提升百倍（毫秒级秒开）**。
+- **高度模块化拆分**：你可以像搭积木一样，按需引入 `geosite-cn.srs`（国内域名）、`geoip-cn.srs`（国内IP）、`geosite-category-ads-all.srs`（广告拦截），**常驻内存占用直降 80% 以上（低至 15MB 左右）**。
+
+---
+
+## 🛠️ 二、在 Sing-box 中配置最新的 Rule Set
+
+在 Sing-box 配置文件 `config.json` 的顶层（与 `inbounds` / `outbounds` 平级），使用 `rule_set` 数组引入最新的 `.srs` 模块：
+
+```json
+{
+  "rule_set": [
+    {
+      "tag": "geosite-cn",
+      "type": "remote",
+      "format": "binary",
+      "url": "https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-cn.srs",
+      "download_detour": "proxy-auto-group",
+      "update_interval": "1d"
+    },
+    {
+      "tag": "geoip-cn",
+      "type": "remote",
+      "format": "binary",
+      "url": "https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geoip/geoip-cn.srs",
+      "download_detour": "proxy-auto-group",
+      "update_interval": "1d"
+    },
+    {
+      "tag": "geosite-ads",
+      "type": "remote",
+      "format": "binary",
+      "url": "https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-category-ads-all.srs",
+      "download_detour": "proxy-auto-group",
+      "update_interval": "1d"
+    }
+  ]
+}
+```
+
+### 💡 核心配置避坑点：
+
+- **`format` 必须设为 `"binary"`**：声明文件为高性能二进制格式。
+- **`download_detour`（关键）**：远程更新时必须绑定一个已激活的代理组名称（如 `proxy-auto-group`）。当 GitHub 遭遇国内网络波动时，Sing-box 会自动强制走代理拉取规则，防止更新失败。
+- **`update_interval`**：设置为 `"1d"`（每天自动后台静默重载一次），实现全自动免维护。
+
+---
+
+## 🔀 三、在路由模块 `route.rules` 中优雅引用
+
+引入规则集后，你的路由规则文件将从几万行臃肿的代码简化为几十行极其清爽的逻辑：
+
+```json
+{
+  "route": {
+    "rules": [
+      // 1. 广告规则最先匹配，直接丢入黑洞
+      {
+        "rule_set": ["geosite-ads"],
+        "outbound": "block"
+      },
+      // 2. 国内域名与 IP 直连
+      {
+        "rule_set": ["geosite-cn", "geoip-cn"],
+        "outbound": "direct"
+      }
+    ],
+    "final": "proxy-auto-group" // 其余流量走代理
+  }
+}
+```
+
+---
+
+## 🔨 四、进阶实操：本地编译个人专属的 Rule Set
+
+如果你需要为公司内网、特定私人服务器或私有域名制作一套专属分流文件，可以使用 Sing-box 核心命令行在本地快速编译：
+
+### 1. 创建 JSON 格式原文件
+
+新建 `my-custom-rules.json`：
+
+```json
+{
+  "version": 1,
+  "rules": [
+    {
+      "domain": ["mycompany.com", "privateserver.net"],
+      "domain_suffix": [".internal.company.com"],
+      "ip_cidr": ["10.200.0.0/16"]
+    }
+  ]
+}
+```
+
+### 2. 执行二进制编译指令
+
+打开终端，运行 Sing-box 编译命令：
+
+```bash
+sing-box rule-set compile my-custom-rules.json -o my-custom-rules.srs
+```
+
+指令会在瞬间生成一个体积极小的 `my-custom-rules.srs` 文件。只需将其放入设备的本地路径，并在 `rule_set` 中使用 `"type": "local"` 即可加载。
+
+---
+
+## 🏁 五、总结与稳定性保障
+
+将旧版 DAT 文件替换为二进制 Rule Set，是给你的 Sing-box 客户端“瘦身打鸡血”最立竿见影的优化手段。无论是在百元级的 OpenWrt 软路由上，还是在移动端设备上，都能带来令人惊艳的秒开体验。
+
+然而，**云端拉取第三方规则集的前提是拥有稳定高频的网络连接通道。** 如果您的代理节点频繁断流，会导致客户端在凌晨自动更新规则集时超时卡死。
+
+### 💡 极客网络保障推荐
+
+为了保证您的客户端在后台静默更新规则集与分流数据库时万无一失，**选择一个拥有 IPLC / IEPL 专线保障的高品质服务商至关重要。**
+
+推荐阅读本站的深度评测报告：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)。该平台在后端提供原生经过优化的 Sing-box 规则集加速分发，配合超高带宽高优先级路由，确保您的 Sing-box 客户端在任何敏感时期均能瞬时完成规则拉取与极速冲浪。
+
+---
+
+_（相关资源导航：如果您需要寻找优质 VPS 部署自己的云端规则集加速网关，欢迎访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速获取 DMIT、搬瓦工及 CloudCone 的最新折扣与选购通道！）_

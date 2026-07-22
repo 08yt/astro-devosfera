@@ -1,0 +1,196 @@
+---
+title: "守护你的 VPS 节点：2026 使用 UFW + Fail2ban 打造防主动探测与暴力破解的 Sing-box 安全堡垒"
+author: "毛佳国"
+pubDatetime: 2026-08-05T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - 服务器搭建
+  - 网络安全
+description: "深入讲解海外 VPS 节点的安全加固指南。手把手教你通过修改 SSH 密钥认证、配置 UFW 最小化防火墙规则以及部署 Fail2ban 自动扫描日志封禁恶意 IP，全方位守护你的 Sing-box 服务器不受暴力破解与扫描探测。"
+---
+
+在科学上网与自建节点的世界里，许多极客在云服务商处刚购买一台新的 VPS，往往只顾着安装 **Sing-box** 节点并配置 VLESS 或 Hysteria 2，却完全忽略了**服务器基础安全防线**。
+
+结果就是：VPS 在公网上裸奔，每天遭到成千上万次来自僵尸网络（Botnet）的黑客扫描：
+
+- 默认的 SSH `22` 端口被不断尝试密码爆破；
+- 开放的端口被防火墙（GFW）与恶意扫描器频频主动探测；
+- 严重时不仅会导致服务器 CPU 被爆破进程抢占，甚至可能引发账号被云厂商直接封禁。
+
+今天，我们将通过**修改 SSH 安全策略**、**部署 UFW 最小化防火墙**以及**配置 Fail2ban 自动化日志分析**三大防护要诀，把你的 VPS 打造成为一座固若金汤的安全堡垒！
+
+---
+
+## 🔒 一、第一步：SSH 基础加固（防暴力破解）
+
+几乎所有的自动爆破脚本都是针对默认的 `22` 端口与 Root 密码发起的。我们首先切断这一最常见的攻击路径。
+
+### 1. 禁用密码登录，仅允许密钥认证
+
+在你的本地电脑上生成 SSH 密钥对（如果已有可跳过）：
+
+```bash
+ssh-keygen -t ed25519 -C "your_email@example.com"
+```
+
+将生成的公钥 `~/.ssh/id_ed25519.pub` 内容追加保存到服务器的 `/root/.ssh/authorized_keys` 文件中。
+
+### 2. 修改 SSH 配置文件
+
+登录服务器终端，编辑 `/etc/ssh/sshd_config`：
+
+```ini
+# 修改默认端口为自定义高位端口（例如 2288）
+Port 2288
+
+# 禁用 Root 密码登录（仅允许密钥）
+PasswordAuthentication no
+
+# 禁用空密码
+PermitEmptyPasswords no
+```
+
+保存后重启 SSH 服务：
+
+```bash
+systemctl restart sshd
+```
+
+> [!IMPORTANT]
+> **测试连接**：**先不要关闭当前的 SSH 终端窗口**！打开一个新的命令行终端，尝试使用新端口和密钥连接：`ssh -p 2288 root@your-vps-ip`。验证能够成功登录后，再关闭旧窗口，防止因配置错误被锁在门外。
+
+---
+
+## 🧱 二、第二步：部署 UFW 防火墙（最小放行原则）
+
+**UFW (Uncomplicated Firewall)** 是 Linux 上最易用的 iptables 前端。我们要实施**“默认拒绝一切入站，仅按需放行”**的原则。
+
+### 1. 安装并设置默认规则
+
+```bash
+apt-get update && apt-get install ufw -y
+
+# 默认拒绝所有入站流量
+ufw default deny incoming
+
+# 默认允许所有出站流量
+ufw default allow outgoing
+```
+
+### 2. 精准放行必要端口
+
+只开放你的自定义 SSH 端口以及 Sing-box 节点所需的 TCP/UDP 端口（假设你的 VLESS-Reality 和 Hysteria 2 使用 `443` 端口）：
+
+```bash
+# 必须先放行新的 SSH 端口，否则开启防火墙后你自己会被踢出！
+ufw allow 2288/tcp comment 'Custom SSH'
+
+# 放行 Sing-box 代理端口 (443 端口的 TCP 与 UDP)
+ufw allow 443/tcp comment 'Sing-box VLESS'
+ufw allow 443/udp comment 'Sing-box Hysteria2'
+```
+
+### 3. 启用防火墙
+
+检查规则无误后，启用 UFW：
+
+```bash
+ufw enable
+ufw status verbose
+```
+
+此时，除 `2288` 和 `443` 外，公网上任何试图扫描你服务器其他端口的请求都将被内核直接丢弃。
+
+---
+
+## 🛡️ 三、第三步：配置 Fail2ban 自动分析日志并封禁恶意 IP
+
+即使修改了端口，公网上的扫描器依然可能扫出你的 `2288` 端口并尝试握手。使用 **Fail2ban** 可以做到：**只要某个 IP 在短时间内尝试失败次数达到阈值，就自动调用防火墙将其 IP 拉黑封禁数天。**
+
+### 1. 安装 Fail2ban
+
+```bash
+apt-get install fail2ban -y
+```
+
+### 2. 创建本地配置文件
+
+不要直接修改 `fail2ban.conf`，新建 `/etc/fail2ban/jail.local` 文件：
+
+```ini
+[DEFAULT]
+# 忽略的白名单 IP（可以填你本地的固定公网 IP）
+ignoreip = 127.0.0.1/8 ::1
+
+# 封禁时长（86400 秒 = 24 小时）
+bantime  = 86400
+
+# 统计时间窗口（在 10 分钟内）
+findtime = 600
+
+# 容忍的最大失败次数
+maxretry = 3
+
+# 默认防护 SSH
+[sshd]
+enabled = true
+port    = 2288
+logpath = %(sshd_log)s
+backend = %(sshd_backend)s
+```
+
+### 3. 为 Sing-box 创建自定义日志保护规则
+
+如果黑客或扫描器试图向你的 Sing-box 节点发送畸形探测包，Sing-box 会在日志中记录 `authentication failed` 或 `handshake error`。
+
+在 `/etc/fail2ban/filter.d/sing-box.conf` 中创建规则过滤器：
+
+```ini
+[Definition]
+failregex = ^.*\[inbound/.*\] connection error from <HOST>:\d+: authentication failed$
+            ^.*\[inbound/.*\] connection error from <HOST>:\d+: handshake failed$
+ignoreregex =
+```
+
+在 `/etc/fail2ban/jail.local` 尾部追加监控规则：
+
+```ini
+[sing-box]
+enabled  = true
+port     = 443
+filter   = sing-box
+logpath  = /var/log/sing-box.log
+maxretry = 5
+bantime  = 172800
+```
+
+### 4. 启动与查看封禁列表
+
+启动 Fail2ban 并查看当前已被拉黑的黑客 IP：
+
+```bash
+systemctl enable fail2ban --now
+fail2ban-client status sshd
+```
+
+---
+
+## 🏎️ 四、总结与免维护替代方案
+
+通过 **修改高位 SSH 端口 + 密钥认证 + UFW 最小放行 + Fail2ban 自动拉黑**，你的 VPS 节点在公网上的安全系数直接拉满。
+
+然而，我们必须客观认识到：
+
+- **运维成本**：自建 VPS 节点需要长期关注系统内核更新、证书续签以及日志防护。
+- **IP 物理封锁**：即使服务器自身绝对安全，如果整个数据中心机房的 IP 段遭到 GFW 的无差别阻断，自建节点依然会面临连不上的困境。
+
+### 💡 极客省心防封解法
+
+对于追求全天候极致稳定、不想把精力耗费在 Linux 安全防爆破与防火墙调试上的用户，**选择具备专业运维团队全天候维护的专线商业机场是极具性价比的解决方案。**
+
+推荐阅读本站的深度评测报告：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)。该服务商全线采用 IPLC / IEPL 专线传输，前台与后台节点均由专业运维团队全天候监控风控与安全防扫描，支持原生 Sing-box 订阅一键导入，带给您完全免维护的高速冲浪体验。
+
+---
+
+_（相关资源导航：如果您需要购买高配置、IP 干净的 VPS 部署自己的 Linux 安全网关，欢迎访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速获取 DMIT、搬瓦工、CloudCone 以及 RackNerd 等各大主机的最新折扣通道。）_

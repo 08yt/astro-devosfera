@@ -1,0 +1,127 @@
+---
+title: "双宽带叠加与故障转移：2026 OpenWrt 配合 Sing-box 多出站（Multi-Outbound）网络聚合实战"
+author: "毛佳国"
+pubDatetime: 2026-08-09T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - Homelab
+  - 软路由
+description: "详解如何在 OpenWrt 软路由环境利用 Sing-box 的多出站（Multi-Outbound）与 urltest 自动测速策略组，配合双宽带（MWAN3）实现速度叠加与节点秒级无感故障转移。"
+---
+
+在家庭 **Homelab** 或企业软路由网络架构中，追求极致稳定的玩家往往会采取两项双重保障策略：
+
+1.  **物理物理双宽带**：拉两条不同运营商的宽带（例如电信 CN2 + 移动大宽带），通过 OpenWrt 的 **MWAN3** 模块进行叠加或备份。
+2.  **多节点冗余分流**：在 **Sing-box** 客户端中配置多个来自不同地区（如香港 IPLC、美西 GIA、日本软银）的代理出站节点。
+
+然而，如果配置不当，当其中某一条物理宽带掉线、或者某个 VPS 节点突然遭遇 IP 阻断时，家庭内网常常会出现**长达数分钟的卡顿死锁**，极大地影响上网体验。
+
+今天，我们将手把手教你如何利用 Sing-box 的 **多出站（Multi-Outbound）** 策略组，配合 OpenWrt 实现物理宽带叠加与节点秒级无感故障转移！
+
+---
+
+## 📐 一、多出站策略组核心模型：urltest vs selector
+
+在 Sing-box 配置文件中，处理多个节点出站主要依赖以下两种组（Outbound Group）类型：
+
+- **`selector`（手动选择组）**：在 UI 界面上手动勾选某一个指定节点。适合对特定 IP 有固定需求（如解锁 Netflix 或 ChatGPT 所在节点）的场景。
+- **`urltest`（自动测速选优组）**：🏆 **秒级容灾核心**。 Sing-box 会按照设定的时间间隔（如每 3 分钟）向指定的健康检查地址（如 `gstatic.com/generate_204`）发送 HTTP 测试。系统会自动将流量切向当前延迟最低、且无丢包的节点上。
+
+---
+
+## 🛠️ 二、第一步：配置 Sing-box 自动故障转移 JSON
+
+在 Sing-box 的配置文件 `config.json` 的 `outbounds` 数组中，我们定义各个独立节点，并使用 `urltest` 策略组将它们包容进来：
+
+```json
+{
+  "outbounds": [
+    // 1. 自动测速与故障转移主策略组
+    {
+      "type": "urltest",
+      "tag": "proxy-auto-group",
+      "outbounds": [
+        "node-dmit-hk-iplc",
+        "node-bwh-us-gia",
+        "node-cloudcone-us"
+      ],
+      "url": "https://www.gstatic.com/generate_204",
+      "interval": "3m", // 每 3 分钟自动后台健康检查一次
+      "tolerance": 50, // 容差区间（毫秒）：只有当新节点延迟比旧节点低 50ms 以上时才切换，避免频繁震荡
+      "idle_timeout": "30m" // 空闲超时
+    },
+
+    // 2. 独立出站节点 A：香港 IPLC
+    {
+      "type": "vless",
+      "tag": "node-dmit-hk-iplc",
+      "server": "1.2.3.4",
+      "server_port": 443,
+      "uuid": "your-uuid",
+      "flow": "xtls-r-flow"
+      // tls/reality 参数...
+    },
+
+    // 3. 独立出站节点 B：美西 CN2 GIA
+    {
+      "type": "hysteria2",
+      "tag": "node-bwh-us-gia",
+      "server": "5.6.7.8",
+      "server_port": 443,
+      "auth": "your-password"
+      // hop_ports 参数...
+    },
+
+    // 4. 物理直连出站
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}
+```
+
+### 💡 `tolerance` 容差参数精妙之处：
+
+如果将 `tolerance` 设为 `0`，只要节点 A 延迟比节点 B 稍微快了 1ms，系统就会瞬间切换过去。在网络抖动时，这会导致建立好的 TCP 长连接（如游戏或直播）频繁断开。**设置为 50ms 到 100ms** 能在保障流畅性的前提下，实现最优雅的稳健切替。
+
+---
+
+## 🌐 三、第二步：配合 OpenWrt MWAN3 实现物理双宽带叠加
+
+如果你的软路由接入了两条物理宽带（如 WAN1 为电信，WAN2 为移动）：
+
+### 1. 配置 MWAN3 负载均衡规则
+
+在 OpenWrt 管理后台：进入 **网络** -> **MWAN3 多 WAN 负载均衡**。
+
+- 设置接口监控地址（如 `223.5.5.5`）。
+- 在 **“成员 (Members)”** 中设置权重：例如电信权重设为 `3`，移动权重设为 `2`。
+- 在 **“策略 (Policies)”** 中创建一个名为 `balanced_all` 的负载均衡策略，包含这两条成员。
+
+### 2. Sing-box 多出站绑定
+
+通过这种结合，即使你的物理宽带 WAN1 意外断网，OpenWrt MWAN3 会在 3 秒内将物理流量切到 WAN2 宽带上；随后 Sing-box 发现旧链路响应超时，会通过 `urltest` 自动将节点选优切向在 WAN2 上表现最佳的代理节点，实现**双重保险下的零感秒切**。
+
+---
+
+## 🏎️ 四、总结与极客线路推荐
+
+通过 Sing-box 的 `urltest` 策略组与 OpenWrt 软路由多 WAN 口的配合，你搭建的家庭网络将拥有媲美企业级机房的**高可用与自动备份能力**。
+
+然而，要让多出站故障转移真正发挥威力，**前提是你的出站节点池中必须包含至少一个具备“绝对物理稳定性”的高端专线节点。** 如果池子里全都是经常丢包的便宜低质节点，再好的 `urltest` 算法也只能在几个卡顿的节点之间来回震荡。
+
+### 💡 节点池搭建与主机选购推荐
+
+1.  **主节点：专线中转（IPL/IEPL）**
+    - 建议选择老牌高口碑商家的专线订阅作为默认优先节点。推荐阅读本站评测：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)。专线走内网出境，物理延迟极低且 100% 免受 GFW 干扰，是策略组中最稳健的基石。
+2.  **备用节点：高端直连 VPS (DMIT / 搬瓦工)**
+    - 建议配合自建的高端 CN2 GIA VPS（如 **DMIT** 或 **搬瓦工**）作为备用出站。当云端专线遭遇突发维护时，策略组会在毫秒级自动无感切回你的自建 VPS。
+
+> [!TIP]
+> 更多有关 VPS 主机的带宽测试、路由测试与独家特惠端口，欢迎参考本站的 [《极客第一只小鸡：2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 与 [/best](/best) 导航。
+
+---
+
+_（相关资源导航：如果你需要采购高带宽、IP 干净的 VPS 搭建属于自己的多出站节点池，欢迎访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速获取 DMIT、搬瓦工、CloudCone 以及 RackNerd 等各大主机的最新折扣通道。）_
