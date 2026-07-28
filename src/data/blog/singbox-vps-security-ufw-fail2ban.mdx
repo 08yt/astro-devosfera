@@ -20,6 +20,13 @@ description: "深入讲解海外 VPS 节点的安全加固指南。手把手教�
 
 今天，我们将通过**修改 SSH 安全策略**、**部署 UFW 最小化防火墙**以及**配置 Fail2ban 自动化日志分析**三大防护要诀，把你的 VPS 打造成为一座固若金汤的安全堡垒！
 
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **核心防护**：修改默认 SSH `22` 端口为高位自定义端口、禁用密码强推 `ed25519` 密钥登录。
+> - **防火墙规则**：配置 UFW `default deny incoming`（默认拒绝入站），仅放行自定义 SSH 与 Sing-box 代理端口（TCP/UDP 443）。
+> - **自动化加固**：使用 Fail2ban 实时监测 Sing-box 握手失败日志与 SSH 错误，自动将恶意爆破 IP 拉入黑名单封禁 24-48 小时。
+
 ---
 
 ## 🔒 一、第一步：SSH 基础加固（防暴力破解）
@@ -173,6 +180,18 @@ bantime  = 172800
 systemctl enable fail2ban --now
 fail2ban-client status sshd
 ```
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 如果我不小心被 Fail2ban 误封了自己的 IP 连不上 VPS 怎么办？
+
+**答**：如果你有服务商控制台提供的 VNC / Serial Console，可以登录终端执行 `fail2ban-client set sshd unbanip <你的IP>`。如果没有 VNC，由于默认封禁有 `bantime` 时长（如 24 小时），可以尝试切换手机热点或连其他 VPN 换 IP 重新登录。
+
+### Q2: 为什么开启了 UFW 之后，某些 Docker 容器依然能越过防火墙暴露端口？
+
+**答**：Docker 默认会自动修改系统 `iptables` 的 `FORWARD` 链，绕过 UFW 的入站限制。要解决此问题，需修改 `/etc/docker/daemon.json` 加上 `"iptables": false`，或者通过配置特定在 `DOCKER-USER` 链中的 UFW 规则。
 
 ---
 

@@ -19,6 +19,13 @@ description: "详解如何在 OpenWrt 软路由环境利用 Sing-box 的多出�
 
 今天，我们将手把手教你如何利用 Sing-box 的 **多出站（Multi-Outbound）** 策略组，配合 OpenWrt 实现物理宽带叠加与节点秒级无感故障转移！
 
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **原理解析**：结合 Sing-box 的 `urltest` 自动测速策略组与 OpenWrt MWAN3 模块，实现“物理多宽带（电信+移动）+ 节点链路”的双重多路故障冗余。
+> - **参数微调**：`tolerance: 50` 能够防止节点因 1-2ms 的微小延迟抖动而频繁跳切导致长连接中断；`interval: "3m"` 保证低开销后台健康检查。
+> - **最佳拓扑**：建议采用“IPLC/IEPL 专线为主节点，海外 CN2 GIA VPS 为容灾备用节点”的双组架构。
+
 ---
 
 ## 📐 一、多出站策略组核心模型：urltest vs selector
@@ -103,6 +110,18 @@ description: "详解如何在 OpenWrt 软路由环境利用 Sing-box 的多出�
 ### 2. Sing-box 多出站绑定
 
 通过这种结合，即使你的物理宽带 WAN1 意外断网，OpenWrt MWAN3 会在 3 秒内将物理流量切到 WAN2 宽带上；随后 Sing-box 发现旧链路响应超时，会通过 `urltest` 自动将节点选优切向在 WAN2 上表现最佳的代理节点，实现**双重保险下的零感秒切**。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: `urltest` 的健康检查测试地址（`url`）该如何挑选？
+
+**答**：建议使用 `https://www.gstatic.com/generate_204` 或 `http://cp.cloudflare.com/generate_204`。这类 204 响应接口返回数据量极小（0 字节 Body），既能准确测试延迟与连通性，又不会白白浪费测试流量。
+
+### Q2: 为什么开启多出站节点自动切换后，部分网页登录状态频繁掉线？
+
+**答**：某些对安全敏感的网站（如银行、Paypal 或特定论坛）会校验用户的出口 IP 地址。如果 `urltest` 策略组的 `tolerance` 设得太小引发频繁换节点 IP，就会被网站判为异常登出。建议将敏感域名专门划分给固定节点（`selector`）或者放行直连。
 
 ---
 

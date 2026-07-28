@@ -19,6 +19,13 @@ description: "解决家庭 NAS/Homelab 影视墙（Jellyfin/Plex/Emby）在刮�
 
 今天，我们将带你利用 **Sing-box** 的路由分流功能，实施**“影视刮削走代理，视频流直连放行”**的精细化分流方案！
 
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **核心问题**：Jellyfin/Plex 影视刮削接口（TMDB/TVDB）被封锁无法加载海报，若全走代理又会导致 4K 视频流消耗巨量节点流量。
+> - **分流解法**：在 Sing-box 路由规则中精确锁定 `.themoviedb.org`、`.tmdb.org`、`.thetvdb.com` 与 `.fanart.tv` 走代理出站；其余流量与局域网段（`192.168.0.0/16`）设为 `direct` 直连。
+> - **最佳搭配**：在 Docker 容器环境变量或透明网关配置 `NO_PROXY` 避免内网回源卡顿。
+
 ---
 
 ## 🔍 一、精细化分流的核心原理
@@ -102,6 +109,18 @@ services:
 ### 方法 B：透明网关模式（适用于软路由环境）
 
 如果你的网关上运行着开启了 TUN 模式的 Sing-box 客户端，你只需确保 Jellyfin 所在物理网口的默认网关指向了软路由 IP。Sing-box 会自动捕获它的 DNS 53 端口解析，将刮削域名拦截并代理，实现免环境变量配置的透明代理。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 配置完规则后，TMDB 海报依然显示问号或加载失败怎么办？
+
+**答**：这通常是因为 TMDB 海报图片的 CDN 域名（如 `image.tmdb.org` 或 `media.fandom.com`）的 DNS 解析被本地 DNS 缓存污染。请确保 Sing-box 配置中的 `dns.rules` 同样将上述刮削域名指定为加密代理 DNS（`dns-proxy`）解析。
+
+### Q2: 异地串流播放 Jellyfin 时，如何确保视频流不走 Sing-box 节点？
+
+**答**：请确保 Jellyfin 的公网访问域名（例如你的自建 DDNS 或 Cloudflare 域名）未被错误填入 `domain_suffix` 的代理匹配列表中，同时在 `route.rules` 的底部保持 `final: direct`。
 
 ---
 

@@ -16,6 +16,13 @@ description: "深入剖析 TLS 客户端指纹（JA3）与 GFW 防火墙主动�
 
 今天，我们将深入拆解 TLS 指纹特征的嗅探原理，并手把手教你如何利用 **Sing-box** 的 **uTLS** 模块，给你的出站连接穿上完美的 Chrome / Safari 伪装外衣，彻底绕过防火墙的主动扫描。
 
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **核心原理**：TLS 客户端指纹（JA3/uTLS）是 GFW 防火墙辨别代理流量与真实浏览器的重要特征。若语言加密库特征（Go/Rust）暴露，会导致 IP / 端口迅速被封锁。
+> - **推荐设置**：在 Sing-box 出站 `tls.utls` 中开启 `"enabled": true` 并指定 `"fingerprint": "chrome"`（桌面端/Android）或 `"safari"`（iOS端）。
+> - **避坑要点**：**严禁使用 `random` 随机指纹**，频繁变更的畸形 JA3 哈希极易触发 AI 风控模型拦阻。
+
 ---
 
 ## 🔍 一、什么是 TLS 指纹 (JA3)？防火墙是如何识别它的？
@@ -95,11 +102,21 @@ description: "深入剖析 TLS 客户端指纹（JA3）与 GFW 防火墙主动�
 
 ## 📱 四、不同客户端平台的指纹配置对齐
 
-为了让指纹伪装更逼真，建议让 Sing-box 的指纹设置与你运行的设备环境保持一致：
-
 1.  **iPhone / iPad / Mac**：使用 Shadowrocket、Loon 或 Stash 时，在 TLS 配置中将 Client Fingerprint 设为 **`Safari`**，因为苹果设备的绝大多数流量本身就来自 Safari 证书库。
 2.  **Windows / Linux PC**：在 Sing-box 客户端中将 `fingerprint` 设为 **`chrome`**。
 3.  **Android 设备**：设置成 **`chrome`**。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 配置了 uTLS 指纹，就能保证 VPS 的 IP 永远不被封锁吗？
+
+**答**：不能。uTLS 解决的是 TLS 握手层面的 JA3 指纹暴露问题。节点被封还可能取决于 VPS IP 是否本身在黑名单内、UDP 流量是否遭 QoS 限速、以及伪装域名（dest/server_name）合规度。
+
+### Q2: 为什么 iOS 设备推荐设置 `safari` 指纹而非 `chrome`？
+
+**答**：在 iOS 系统上，绝大多数 App 的 Web 网络请求底层调用 WebKit 框架，其发送的 Client Hello 特征天然与 Safari 一致。如果强行设为 `chrome`，可能引起防火墙对系统平台特征的交叉比对异常。
 
 ---
 

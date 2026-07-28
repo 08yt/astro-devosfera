@@ -21,6 +21,13 @@ description: "深入对比传统 V2Ray/Clash 的 DAT 数据库与 Sing-box 二�
 
 今天，我们将带你彻底淘汰旧版 GeoIP，全面拥抱 Sing-box 的**二进制规则集（Rule Set，扩展名为 `.srs`）**，让你的客户端实现毫秒级秒开与极致内存优化！
 
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **性能痛点**：旧版 `geoip.dat` 与 `geosite.dat` 大包解压慢、启动卡顿 3-10 秒，常驻内存占用高达 150-300MB，软路由极易 OOM 崩溃。
+> - **解决方案**：升级为 `.srs` 二进制规则集，按需分模块拉取，启动速度提升百倍（毫秒级秒开），内存占用直降 80%（仅需 ~15MB）。
+> - **核心参数**：配置文件中必须声明 `"format": "binary"` 并绑定 `"download_detour"` 避免网络阻断更新卡死。
+
 ---
 
 ## 🧐 一、为什么旧版 `.dat` 文件会被历史淘汰？
@@ -138,6 +145,18 @@ sing-box rule-set compile my-custom-rules.json -o my-custom-rules.srs
 ```
 
 指令会在瞬间生成一个体积极小的 `my-custom-rules.srs` 文件。只需将其放入设备的本地路径，并在 `rule_set` 中使用 `"type": "local"` 即可加载。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 二进制 `.srs` 规则集与旧版 `.json` 规则源文件有什么区别？
+
+**答**：`.json` 是便于人类编写和阅读的文本文件；而 `.srs` 是通过 `sing-box rule-set compile` 预先将域名和 IP 网段转化为 Radix 树数据结构后的二进制数据库。客户端读取 `.srs` 时省去了所有 JSON 解析时间。
+
+### Q2: 为什么 Sing-box 远程拉取 `.srs` 时容易报 `download error`？
+
+**答**：绝大多数第三方规则集托管在 GitHub Raw 或 GitHub Releases 上。国内网络直连 GitHub 极易发生丢包或 SNI 阻断。请务必在规则声明中加入 `"download_detour": "你的代理出站tag"`，强制让规则下载流量走代理节点。
 
 ---
 
