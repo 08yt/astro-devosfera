@@ -8,42 +8,52 @@ tags:
   - 服务器搭建
   - VLESS
   - 极客探索
-description: "教用户如何在海外服务器上手动搭建服务端环境，提供 Docker 或者一键安装脚本的思路。实现基于 VLESS 和 Reality 的抗封锁节点。"
+description: "教用户如何在海外 VPS 服务器上手动部署 Sing-box 服务端环境。基于 2026 最新标准配置 VLESS-Reality 抗封锁节点，手把手提供 Docker Compose 极速建站与密钥生成实战。"
 ---
 
-如果说使用别人提供的订阅叫“拎包入住”，那么拥有一台自己的 VPS 并搭建节点，就是自己“盖一栋抗震别墅”。 
+在如今的网络环境下，老旧的协议（如 Shadowsocks、VMess 等）很容易被防火墙（GFW）根据流量特征识别阻断。
 
-在如今的网络环境下，老旧的协议（如 Shadowsocks、VMess 等）很容易被识别和封锁。而 **VLESS+Reality** 因为其独特的“偷窥真实 TLS 握手”的设计，成为了抗封锁能力极强的前沿协议。本篇文章教你如何使用 Sing-box 作为服务端核心来部署它。
+而 **VLESS-Reality** 因为其独特的“借用真实 TLS 1.3 握手证书”的设计，消除了自签 SSL 证书的特征漏洞，成为了目前抗封锁能力极强的前沿协议。本篇文章教你如何使用 **Sing-box** 作为服务端核心在海外 VPS 上部署它。
 
-## Table of contents
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **核心协议**：VLESS + Reality（传输层为 TCP，借用公网合规域名如 `images.apple.com`）。
+> - **流控规范**：Sing-box 服务端与客户端流控必须指定为 `"flow": "xtls-r-flow"`。
+> - **部署推荐**：优先采用 Docker Compose + `network_mode: host` 部署，兼顾安全性与超高转发吞吐。
 
-## 环境准备工作的选择
-首先你需要拥有一台云主机（VPS）并拥有 `root` 权限。推荐安装较为现代的操作系统，比如 **Debian 12** 或 **Ubuntu 24.04**。
+---
 
-## 方案一：使用一键安装脚本部署 (最适合小白)
+## 🛠️ 第一步：环境准备与 Docker 安装
 
-如果你是 Linux 新手，或者只是想迅速获得一个节点。很多大佬开源了优秀的后端安装脚本：
-1. 用 SSH 登录你的 VPS (`ssh root@ip`）
-2. 在终端执行一键部署命令，比如大家熟知的 [X-UI 衍生版] 或者某些 Sing-box 专项脚本。
-3. 按照命令的提示，选择你要部署的协议、端口和你的 UUID 等。
+你需要拥有一台海外云主机（VPS）并拥有一台主流 Linux 操作系统（推荐 **Debian 12** 或 **Ubuntu 24.04**）。
 
-其实我们更推荐的方式是深入了解，用方案二纯手工跑起来！
+通过 SSH 登录 VPS 终端并快速安装 Docker 运行环境：
 
-## 方案二：通过 Docker 原生部署 Sing-box 核心配置
-
-Docker 的隔离性可以保证服务器纯净。
-
-### 1. 安装 Docker 并拉取镜像
 ```bash
 curl -fsSL https://get.docker.com -o get-docker.sh
 sh get-docker.sh
-docker pull sagernet/sing-box:latest
 ```
 
-### 2. 编写服务端配置文件 config.json
-在宿主机新建目录 `/etc/sing-box/` 并创建 `config.json`：
+---
+
+## 🛠️ 第二步：编写 Sing-box 服务端 `config.json`
+
+在 VPS 宿主机创建配置目录 `/etc/sing-box/`：
+
+```bash
+mkdir -p /etc/sing-box
+cd /etc/sing-box
+```
+
+创建服务端配置文件 `config.json`：
+
 ```json
 {
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
   "inbounds": [
     {
       "type": "vless",
@@ -52,47 +62,89 @@ docker pull sagernet/sing-box:latest
       "listen_port": 443,
       "users": [
         {
-          "uuid": "这里生成一个你自己的 UUID 字符串",
-          "flow": "xtls-rprx-vision"
+          "uuid": "your-uuid-here", // 填入随机生成的 UUID
+          "flow": "xtls-r-flow" // 2026 正确流控规范
         }
       ],
       "tls": {
         "enabled": true,
-        "server_name": "www.microsoft.com", 
+        "server_name": "images.apple.com", // 借用的伪装域名
         "reality": {
           "enabled": true,
           "handshake": {
-            "server": "www.microsoft.com", // 伪装的域名，必须是真实支持 TLSv1.3 和 H2
+            "server": "images.apple.com", // 握手目标回源地址
             "server_port": 443
           },
-          "private_key": "这里用 sing-box generate reality-keypair 生成的私钥",
-          "short_id": ["你要设定的短ID"]
+          "private_key": "your-private-key-here", // 使用 sing-box generate reality-keypair 生成
+          "short_id": ["your-short-id-1"] // 自定义 short_id 字符串
         }
       }
     }
   ],
   "outbounds": [
-    { "type": "direct" }
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
   ]
 }
 ```
 
-### 3. 生成 Reality 所需密钥
-Reality 不再需要你购买域名和配置 SSL 证书！
-使用 `docker run --rm sagernet/sing-box generate reality-keypair` 来生成一对 `private_key` 和 `public_key`。
-并按照上方模板，把私钥填入配置，把公钥配置给你自己客户端用。
+---
 
-### 4. 启动服务端
+## 🔑 第三步：生成 Reality 秘钥对
+
+使用 Docker 临时生成一对唯一的 Reality 秘钥（`PrivateKey` 与 `PublicKey`）：
+
 ```bash
-docker run -d \
-  --name sing-box \
-  -v /etc/sing-box:/etc/sing-box \
-  --network host \
-  --restart always \
-  sagernet/sing-box:latest run -c /etc/sing-box/config.json
+docker run --rm ghcr.io/sagernet/sing-box:latest generate reality-keypair
 ```
 
-恭喜！你拥有了一个无法轻易被探测到，安全性极高，并且占用内存只有不足 20MB 的全能服务端代理。
-现在，你可以把对应的客户端配置拼装起来，开始享受了！
+终端会输出如下格式的内容：
 
-*(提示：手搓 VPS 虽然有极客乐趣，但如果你觉得维护服务器太累、IP 被墙成本太高，或者想要更丰富的多国流媒体解锁节点，购买商业机场是更省时省力的互补备用方案。推荐阅读我们的老牌性价比机场评测：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)。)*
+- `PrivateKey`: `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+- `PublicKey`: `yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy`
+
+将 `PrivateKey` 填入服务端 `/etc/sing-box/config.json` 的 `private_key` 字段；将 `PublicKey` 妥善记录，用于后续客户端配置。
+
+---
+
+## 🚀 第四步：使用 Docker Compose 一键启动
+
+在 `/etc/sing-box/` 目录下创建 `docker-compose.yml`：
+
+```yaml
+version: "3.8"
+
+services:
+  sing-box:
+    image: ghcr.io/sagernet/sing-box:latest
+    container_name: sing-box-server
+    restart: always
+    network_mode: host
+    volumes:
+      - ./config.json:/etc/sing-box/config.json
+```
+
+在终端运行启动指令：
+
+```bash
+docker compose up -d
+docker compose logs -f
+```
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 为什么要选择 `images.apple.com` 或 `www.microsoft.com` 作为伪装域名？
+
+**答**：Reality 要求借用的伪装域名必须支持 TLS 1.3、HTTP/2，且公网访问量巨大。苹果和微软的大型 CDN 节点在防火墙看来有极其合规的流量特征，不易触发主动探测。
+
+### Q2: 搭建完节点后，客户端配置中还需要注意什么？
+
+**答**：客户端配置中的 `tls.utls` 必须启用并选择 `chrome`（桌面端）或 `safari`（苹果移动端），保持 TLS 客户端指纹与真实浏览器一致，才能做到完全无懈可击。
+
+---
+
+_（主机选购推荐：自建 Reality 节点需要服务器拥有优质干净的 IP 段与优秀的出口宽带。欢迎阅读 [《2026 国外 VPS 选购避坑指南》](/posts/vps-buying-guide-2026/)，获取 **DMIT、搬瓦工、CloudCone** 与 **RackNerd** 的折扣通道；如不想维护 VPS，可参考 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/) 选择商业 IPLC 专线服务。）_

@@ -9,94 +9,125 @@ tags:
   - 运维自动化
   - Bash
   - Linux
-description: "Sing-box 迭代极快，路由规则每天都在变动。教你如何在 Linux 旁路由和 VPS 上写一段极简脚本，让系统在半夜为你自动更新一切。"
+description: "Sing-box 迭代极快，路由规则每天都在变动。教你如何在 Linux 旁路由和 VPS 上写一段极简脚本，让系统在半夜为你自动更新二进制 .srs 规则集并平滑热重载。"
 ---
 
-![自动升级与Cron定时任务](../../assets/images/singbox_auto_update_cron.png)
+随着网络环境每天的变动，“昨天还能直连的网站，今天就变得卡顿，需要更新一下路由分流规则”成为了许多自建节点与 OpenWrt 软路由玩家的日常烦恼。
 
-随着防火墙（GFW）名单每天的扩张，“昨天还能连的网站，今天就上不去了，必须手动更新一下 geoip 路由库”成为了很多自建节点或软路由玩家的日常烦恼。除此之外，作为最“卷”的开源项目之一，Sing-box 几乎每两周就出一个底层性能优化和新功能的新版本。
+除此之外， Sing-box 几乎每隔数周就会推出全新的底层性能优化和功能迭代。
 
-作为极客，任何需要被重复执行的杂事，都应交给机器。这篇文章教你用 Linux 下最初始自带的几个命令组件，写一套在睡梦中就能全自动“更新规则 + 核心换代”的车间流水线机制。
+作为极客，任何需要被重复执行的杂事，都应交给机器。这篇文章教你用 Linux 自带的 **Cron 定时器与 Bash 脚本**，写一套在半夜全自动**“热重载更新 .srs 规则集 + Docker 核心平滑升级”**的自动化车间！
 
-## 场景一：自动更新外部的 srs 路由规则文件
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **规则更新**：通过 Bash 脚本自动拉取最新的 `.srs` 二进制规则集，并通过发送 `SIGHUP` 信号实现 Sing-box 无感热重载。
+> - **容器升级**：配合 Docker Compose 实现 `pull` + `up -d`，秒级替换镜像并自动清理残留垃圾。
+> - **无感运行**：使用 Linux 系统 `crontab -e` 安排在凌晨 04:00 静默执行，全天候零卡顿保障。
 
-在《Sing-box 自定义规则集 (.srs) 编译》一文中，我们学会了手动在客户端写 YAML 并编译出 srs 文件。但如果你在配置 `config.json` 里并没有用 `remote` 方式引入（有时候下载 Github 的 remote 链接会被墙卡死），而是直接在 VPS 本地写了基于局域网的 local 直连引用，你就需要定时去拉取大佬更新好的最新二进制 srs 规则库替换本地文件了。
+---
 
-### 编写热更新脚本 `update_rules.sh`
+## ⚙️ 场景一：自动更新二进制 `.srs` 规则集与无感热重载
 
-我们在宿主机专门存放配置的 `singbox` 的目录新建一个文件：
+对于在 Linux 本地挂载 `.srs` 规则文件的场景，我们可以通过脚本拉取更新，并给 Sing-box 发送特殊系统信号使其“热重载（无需中断用户当前建立的连接）”。
+
+### 1. 编写热更新脚本 `update_rules.sh`
+
+在 `/opt/singbox` 目录下新建 `update_rules.sh`：
 
 ```bash
-cd /root/singbox/
+cd /opt/singbox
 nano update_rules.sh
 ```
 
-利用 `wget` 把开源大佬预编译好的最新广告屏蔽和中国大陆直连的 srs 拉下来（覆盖旧文件），并通过给 Sing-box 发送特殊系统信号使其“热重载（无需中断用户当前连接）”。
+写入以下脚本内容：
 
 ```bash
 #!/bin/bash
-echo "[$(date)] 开始更新 Sing-box srs 分流规则库..."
+echo "[$(date)] 开始更新 Sing-box .srs 分流规则库..."
 
-# 定义存放你 srs 文件的专属路径
-DIR="/root/singbox/rules"
+# 定义规则集文件存放路径
+DIR="/opt/singbox/rules"
+mkdir -p $DIR
 
-# 下载社区维护好的地狱级庞大路由数据库 (例如 Loyalsoldier 或者社区维护的分支)
-wget -O $DIR/geoip-cn.srs https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip-cn.srs
-wget -O $DIR/geosite-cn.srs https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-cn.srs
-wget -O $DIR/geosite-category-ads-all.srs https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite-category-ads-all.srs
+# 自动下载社区最新编译的二进制 SRS 规则集
+curl -sSL -o $DIR/geoip-cn.srs https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geoip/geoip-cn.srs
+curl -sSL -o $DIR/geosite-cn.srs https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-cn.srs
+curl -sSL -o $DIR/geosite-category-ads-all.srs https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-category-ads-all.srs
 
-echo "[$(date)] 规则下载完毕，准备热重载内核..."
+echo "[$(date)] 规则集下载完毕，触发内核无感热重载..."
 
-# 使用 sighup 信号机制！这个很重要，不需要硬重启进程断别人网就能重新读取！
-# 这是目前 Sing-box 的高端玩法之一
-systemctl reload sing-box
+# 给 Sing-box 进程或容器发送 SIGHUP 信号完成热重载
+systemctl reload sing-box 2>/dev/null || docker kill -s SIGHUP sing-box-server
 
-echo "[$(date)] Sing-box 规则热重载真香完成！"
+echo "[$(date)] Sing-box 规则集更新与热重载顺利完成！"
 ```
 
-保存后赋予其可执行权限：
+保存后赋予执行权限：
 
 ```bash
 chmod +x update_rules.sh
 ```
 
-## 场景二：如果你是 Docker 部署的自动升级版版
+---
 
-我们在之前教程里推荐了用 `docker-compose` 以 host 网络方式极其优雅地部署 Sing-box。我们同样写个叫 `docker_update.sh` 的脚本实现“一键平滑重启拉取新镜像”：
+## 📦 场景二：Docker 容器一键平滑重启与镜像升级
+
+如果你的 Sing-box 运行在 Docker Compose 环境中，可以编写 `docker_update.sh` 脚本实现平滑升级：
 
 ```bash
 #!/bin/bash
-DIR="/root/singbox"
+DIR="/opt/singbox"
 cd $DIR
 
-echo "拉取最新的 Sing-box Github 镜像版本..."
-docker-compose pull sing-box
+echo "[$(date)] 正在拉取最新的 Sing-box 官方 Docker 镜像..."
+docker compose pull
 
-echo "销毁旧版本并用新包挂载原版配置启动..."
-docker-compose up -d --remove-orphans
+echo "[$(date)] 重启容器并应用最新镜像..."
+docker compose up -d --remove-orphans
 
-echo "清除残留的临时虚拟网卡和废弃缓存层以节省硬盘..."
+echo "[$(date)] 清理废弃镜像缓存以释放磁盘空间..."
 docker image prune -f
 ```
 
-同样的加上执行权限 `chmod +x docker_update.sh`。
+赋予执行权限：
 
-## 结语篇：让系统大管家 Cron 接管一切
+```bash
+chmod +x docker_update.sh
+```
 
-代码写好了，我们需要让它“定时发作”。Linux 自带的万能定时器 `crontab -e` 。
+---
+
+## ⏰ 场景三：配置 Crontab 自动化定时车间
+
+使用 Linux 系统万能定时器 `crontab -e`：
 
 ```bash
 crontab -e
 ```
 
-将以下配置放入文件末尾：
+在文件末尾加入如下定时任务安排：
 
 ```bash
-# 规则变动频繁：每天凌晨 04点 00分，执行纯净无伤热重载更新规则
-0 4 * * * /root/singbox/update_rules.sh >> /var/log/singbox_rule_cron.log 2>&1
+# 1. 规则变动频繁：每天凌晨 04:00 自动更新 .srs 规则集并无感热重载
+0 4 * * * /opt/singbox/update_rules.sh >> /var/log/singbox_rule_cron.log 2>&1
 
-# 核心非常强大不敢天天动：每周日凌晨 05点 00分，执行大内核重启换代更新
-0 5 * * 0 /root/singbox/docker_update.sh >> /var/log/singbox_core_cron.log 2>&1
+# 2. 内核大升级：每周日凌晨 05:00 自动检查并更新 Docker 容器镜像
+0 5 * * 0 /opt/singbox/docker_update.sh >> /var/log/singbox_core_cron.log 2>&1
 ```
 
-一切大功告成。在极客精神的加持下，你再也不需要隔三差五上去输一串冗长的重启代码了。Sing-box 和 Linux 就是如此迷人，你定义底层逻辑，机器为你服务十年。
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 为什么使用 `systemctl reload` 或 `SIGHUP` 信号能做到无感热重载？
+
+**答**：Sing-box 实现了平滑重载机制。收到 SIGHUP 信号时，内核会新建一个线程解析新的 `config.json` 和 `.srs` 文件，成功后将新请求引流至新配置，旧连接在传输完毕后自然关闭，不会打断网页或视频流。
+
+### Q2: 脚本下载 GitHub 的 `.srs` 文件连接超时怎么解决？
+
+**答**：可以在 `curl` 命令中挂载代理参数（如 `-x http://127.0.0.1:2080`），或者使用 CDN 加速代理前缀（如 `https://ghproxy.com/`），防止国内网络抖动导致文件下载失败。
+
+---
+
+_（商业免维护推荐：如果您觉得在 Linux 终端编写脚本与维护 Cron 仍有门槛，使用由专业团队维护的全专线商业机场是省心高效的一站式解法。推荐阅读 [《“饿饭CC云”怎么样？2026 最新深度评测》](/posts/efan-cc-cloud-review/)；服务器选购指南见 [《YGJC•BEST 极客精选资源导航》](/best/)！）_

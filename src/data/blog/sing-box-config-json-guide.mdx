@@ -8,33 +8,43 @@ tags:
   - 基础入门
   - Sing-box
   - 配置详解
-description: "Sing-box 最让新手头疼的就是基于 JSON 格式的配置项。本文将把 inbounds（入站）、outbounds（出站）、route（路由）这三大核心模块用最简单的话讲透。"
+description: "Sing-box 基于 JSON 格式的配置项。本文将把 inbounds（入站）、outbounds（出站）、route（路由）与 rule_set（规则集）这四大核心模块用最简单的话讲透。"
 ---
 
-很多刚接触 Sing-box 的朋友打开 `.json` 配置文件时，会被满屏幕的大括号 `{}` 吓退。
+很多刚接触 **Sing-box** 的朋友打开 `.json` 配置文件时，会被满屏幕的大括号 `{}` 和复杂的字段吓退。
 
-不用担心！Sing-box 的配置其实非常有逻辑性。你可以把它想象成一个**物流集散中心**：
-1. **入站 (inbounds)**：包裹从哪里运进来？（比如从浏览器的代理端口进来）
-2. **路由 (route)**：根据包裹的目的地进行分拣。（是要发回国内，还是寄往国外？）
-3. **出站 (outbounds)**：包裹通过哪条运输线发出去？（直连发走，还是通过加密的代理节点发走？）
+不用担心！Sing-box 的配置其实非常有逻辑性。你可以把它想象成一个**高效的物流集散中心**：
 
-## Table of contents
+1. **入站 (inbounds)**：包裹从哪里运进来？（比如从本地浏览器的代理端口，或者系统 TUN 虚拟网卡进来）
+2. **规则集 (rule_set)**：仓库手里有哪些分类索引？（哪些是国内 IP/域名？哪些是广告库？）
+3. **路由 (route)**：根据包裹的目的地进行分拣。（是要直发国内，还是通过加密代理送往海外？）
+4. **出站 (outbounds)**：包裹通过哪条运输线发出去？（直连发走，还是通过 VLESS-Reality / Hysteria 2 节点发走？）
 
-## 配置文件的三大核心模块
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **2026 最新标准**：彻底淘汰旧版 Protobuf `.dat` 格式，全量切换为规则集 `rule_set` 引入二进制 `.srs` 文件。
+> - **四大核心模块**：`inbounds`（接管流量）、`outbounds`（定义节点）、`rule_set`（规则索引）、`route`（路由分流规则）。
+> - **避坑指南**：多节点场景下必须绑定 `download_detour`，防止规则更新因 GitHub 网络阻断卡死。
 
-一个最小可运行的 Sing-box 配置结构是这样的：
+---
+
+## 📐 配置文件四大核心模块解析
+
+一个符合 2026 最新 Sing-box 标准的最小可运行配置结构如下：
 
 ```json
 {
   "inbounds": [],
   "outbounds": [],
+  "rule_set": [],
   "route": {}
 }
 ```
 
 ### 1. 入站 (inbounds)：接管设备流量
 
-`inbounds` 用来定义我们如何把流量送进 Sing-box。最常见的做法是建立一个混合代理端口（支持 HTTP 和 SOCKS5）或者透明代理（TUN）。
+`inbounds` 用来定义我们如何把流量送进 Sing-box。最常见的做法是建立一个监听本地端口的混合代理（HTTP + SOCKS5），或者建立透明代理网卡（TUN）。
 
 **示例：创建一个监听 2080 端口的混合接入口**
 
@@ -48,55 +58,107 @@ description: "Sing-box 最让新手头疼的就是基于 JSON 格式的配置项
   }
 ]
 ```
-这里的 `tag` 就像是这个入站口的“名字”，以后我们在看日志或做路由策略时，就会用到这个名字。
 
-### 2. 出站 (outbounds)：连接你的节点
+这里的 `tag` 就像是这个入站口的“名字”，以后我们在看日志或做路由策略时，就会用到这个标识。
+
+---
+
+### 2. 规则集 (rule_set)：引入高性能二进制 `.srs`
+
+在 Sing-box 1.8+ / 1.9+ 生态中，规则集取代了旧版臃肿的 GeoIP。
+
+```json
+"rule_set": [
+  {
+    "tag": "geosite-cn",
+    "type": "remote",
+    "format": "binary",
+    "url": "https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-cn.srs",
+    "download_detour": "proxy-auto-group",
+    "update_interval": "1d"
+  },
+  {
+    "tag": "geoip-cn",
+    "type": "remote",
+    "format": "binary",
+    "url": "https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geoip/geoip-cn.srs",
+    "download_detour": "proxy-auto-group",
+    "update_interval": "1d"
+  }
+]
+```
+
+---
+
+### 3. 出站 (outbounds)：连接你的节点
 
 `outbounds` 就是你的“节点列表”。每个出站代理都需要包含目标服务器的地址、端口以及对应的加密认证信息。
 
-**示例：配置一个 VLESS 节点和一个直连出站**
+**示例：配置一个 VLESS-Reality 节点和一个直连出站**
 
 ```json
 "outbounds": [
   {
     "type": "vless",
-    "tag": "proxy",
+    "tag": "proxy-auto-group",
     "server": "server.example.com",
     "server_port": 443,
-    "uuid": "xxxxx-xxxxxx-xxxx-xxxxxx",
+    "uuid": "your-uuid-here",
+    "flow": "xtls-r-flow",
     "tls": {
       "enabled": true,
-      "server_name": "server.example.com"
+      "server_name": "images.apple.com",
+      "utls": {
+        "enabled": true,
+        "fingerprint": "chrome"
+      },
+      "reality": {
+        "enabled": true,
+        "public_key": "your-public-key-here",
+        "short_id": "your-short-id"
+      }
     }
   },
   {
     "type": "direct",
-    "tag": "direct" // 用于不需要代理的流量
+    "tag": "direct"
   }
 ]
 ```
-请注意，列表中排在**第一个**的出站（通常是代理节点），就是默认出站规则。
 
-### 3. 路由 (route)：指挥棒
+---
 
-这是 Sing-box 最强大的部分。通过设置规则，我们能让大陆的 IP 和域名走 `direct` 出站（不浪费海外服务器流量且访问速快），让其他的流量走 `proxy` 出站。
+### 4. 路由 (route)：优雅的分流指挥官
+
+路由规则根据 `rule_set` 引入的标记对流量进行精确引导：
 
 ```json
 "route": {
   "rules": [
     {
-      "geosite": "cn",
-      "geoip": "cn",
+      "rule_set": ["geosite-cn", "geoip-cn"],
       "outbound": "direct"
     }
   ],
+  "final": "proxy-auto-group",
   "auto_detect_interface": true
 }
 ```
-这段规则的意思非常直白：“如果目标域名是中国的（geosite: cn），或者 IP 是中国的（geoip: cn），请走名为 `direct` 的出站通道；不满足规则的，走默认通道。”
 
-## 总结
+这段规则的意思非常直白：“如果目标域名或 IP 满足 `geosite-cn` 或 `geoip-cn` 规则集，请走名为 `direct` 的直连通道；其余不满足的流量，统一走 `proxy-auto-group` 代理通道。”
 
-你不需要手工敲击几千行的配置！大多数情况下，我们只需要理解这三大模块的作用。以后在使用各种配置生成器或者别人提供的模板时，如果遇到了问题或者想要做一点点修改，你就知道去哪里找了。
+---
 
-> 我们在下一篇文章**《Sing-box 路由规则配置进阶：分流、屏蔽与按需代理实战》**中，会进一步带你体验 `route` 模块的终极威力。
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: JSON 格式配置文件最容易出现什么语法错误？
+
+**答**：最常见的是“多写或漏写逗号（`,`）”以及“大括号/方括号未闭合”。建议在编辑后使用 `sing-box check -c config.json` 进行校验，或在 VS Code / Cursor 中安装 JSON 语法校验插件。
+
+### Q2: 可以在配置文件中同时混合写 `geosite` 字符串和 `rule_set` 吗？
+
+**答**：虽然新版内核为了向下兼容保留了部分旧解析，但在 2026 年现代配置中极其推荐**全量重构为 `rule_set`**，不仅加载性能提升数倍，也能彻底规避后续版本弃用过时字段的风险。
+
+---
+
+_（相关导流提示：如果您不想手工维护几千行的 JSON 配置文件，推荐阅读我们的深度评测：[《“饿饭CC云”怎么样？2026 最新深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)，一键获取原生完美配置好的远程订阅；采购主机请访问 [《YGJC•BEST 极客精选资源导航》](/best/)！）_

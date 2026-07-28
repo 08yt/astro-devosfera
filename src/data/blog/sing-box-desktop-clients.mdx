@@ -7,45 +7,72 @@ draft: false
 tags:
   - 基础入门
   - 客户端
-description: "详细介绍桌面端的图形化客户端（如 sing-box-desktop，或第三方客户端的使用），让你完美接管 Windows 和 Mac 的系统流量。"
+description: "详细介绍桌面端主流 Sing-box 图形化客户端（Sing-box GUI, Mihomo Party, Hiddify Next 等）的选型与使用技巧，让你完美接管 Windows 和 Mac 的系统流量。"
 ---
 
-不同于一些历史包袱沉重的代理工具，Sing-box 作为新秀，在多平台支持上做得极为出色。对于习惯了使用 Clash for Windows 或 V2rayN 的桌面端用户来说，寻找一个同样优秀的替代品尤其重要。本篇文章将详细为你介绍如何在你的电脑上“优雅”地使用 Sing-box。
+不同于一些历史包袱沉重的老牌代理工具，Sing-box 作为下一代通用内核新秀，在多平台支持上做得极为出色。
 
-## Table of contents
+对于习惯了使用 Clash for Windows 或 V2RayN 的桌面端用户来说，选择一个现代、漂亮且性能卓越的 Sing-box 图形化客户端至关重要。
 
-## 为什么不直接用核心命令行？
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **客户端推荐**：Windows/Mac 推荐使用颜值与功能兼备的 **Mihomo Party** 或官方 **Sing-box GUI (Desktop)**；追求傻瓜一键导入推荐 **Hiddify Next**。
+> - **流量接管**：必须勾选并开启 **TUN 模式 (系统虚拟网卡)**，才能彻底让 Telegram、终端命令行以及外服游戏流量被加密代理。
+> - **订阅导入**：支持 Remote 远程订阅链接一键导入拉取。
 
-其实，Sing-box 的内核只是一个几十 MB 的命令行程序。你当然可以通过在终端运行 `sing-box run -c config.json` 来启动它。但是，如果你想做到更佳的体验：
-- 方便地一键切换节点
-- 直观地查看流量状态和延迟测试
-- 自动帮你设置好系统代理和接管浏览器流量
+---
 
-这就需要图形界面客户端出马了！
+## 💻 2026 桌面端主流 Sing-box 客户端对比与选型
 
-## Windows 平台推荐：Sing-box Desktop
+在桌面电脑上，除了直接使用终端运行 `sing-box run -c config.json` 命令行外，强烈推荐使用 GUI 图形界面应用以获得极其便捷的体验：
 
-目前社区最推荐的选择是官方用 Flutter 开发的桌面客户端：**Sing-box Desktop**。
+### 1. Mihomo Party (全平台强推 🏆)
 
-### 如何下载和安装
-你可以访问 GitHub 的官方 Release 页面，下载带有 `windows` 字样的压缩包或安装包。
-> **提示：** 它是完全绿色的软件。解压到一个你自己定义的软件目录里就可以直接用了。
+- **核心特点**：2026 年风靡社区的现代桌面客户端，拥有极其惊艳的 UI 交互，原生支持 Sing-box 与 Mihomo 双内核无缝切换。
+- **推荐人群**：追求极致颜值、喜欢优雅节点分组与抓包日志的用户。
 
-### 使用要点
-1. **获取完整的配置文件配置：** 由于桌面客户端可能对各种简化的订阅支持尚不完善。建议你直接使用工具将机场的订阅链接转换为纯粹的 Sing-box `.json` 配置，并通过面板右键“添加配置文件”导入。（不知道怎么选高速节点？不妨阅读我们对老牌高性价比商家的深度评测：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)，配合本站的订阅转换教程，新手也能一分钟完成导入。）
-2. **TUN 模式：** 想要接管诸如 Telegram 或者某些游戏软件，不仅要启动客户端，还要右键启用 **TUN 模式**。它会安装一个虚拟网卡，无论软件是否支持设置代理设置，流量都会被强制加密送往你的节点。
+### 2. Sing-box GUI / Desktop (官方推荐 官方)
 
-## macOS 平台推荐：SFM
+- **核心特点**：由 SagerNet 官方采用 Flutter 框架打造，体积小巧、绿色无广告，对 Sing-box 最新内核特性的支持最及时。
+- **推荐人群**：追求纯粹原生体验、轻量高效的极客玩家。
 
-Mac 的生态一直是非常优雅的，**SFM (Sing-box for Mac)** 是目前 macOS 系统上体验最好的 Sing-box 前端应用。它原生契合苹果的设计语言，支持深色模式。
+### 3. Hiddify Next (跨平台零门槛 🚀)
 
-### 安装指南
-通过 App Store 或者 GitHub Release 都能下载到。如果你下载的是 dmg 或者 zip 包，拖入应用文件夹 (Applications) 即可。
+- **核心特点**：完全开源且跨全平台（Windows, macOS, Linux, Android, iOS），自动识别粘贴板的 Sing-box 订阅链接并一键开启 TUN。
+- **推荐人群**：小白新手用户、讨厌繁琐配置的朋友。
 
-### 开启系统增强模式
-与 Windows 类似，如果是仅仅通过设置 HTTP 代理，部分苹果的服务和终端命令行是不走代理的。
-SFM 中内置了非常完善的系统规则。在首选项 (Preferences) 中，勾选 **"Setup system tun interface"**。授权后，你的整个系统就已经无缝地在 Sing-box 的保护之下了。
+---
 
-## 结语
+## ⚙️ 核心使用要点与 TUN 增强模式配置
 
-桌面客户端的选择其实见仁见智。有很多优秀的第三方项目，比如 Nekoray、Hiddify 等同样内置了 Sing-box 内核作为驱动，界面也十分友好。你可以挨个尝试，找到最适合你自己操作习惯的那一个！
+### 1. 订阅一键导入
+
+启动客户端后，选择 **Profiles (配置管理)** -> **Add Profile / Remote URL**，粘贴服务商给出的远程 Sing-box 订阅链接。点击保存并拉取配置。
+
+_（提示：如果您还没有稳定、支持最新 VLESS-Reality 与 Hysteria 2 协议的节点订阅，欢迎阅读我们对老牌高性价比商家的深度评测：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)。）_
+
+### 2. 必须开启 TUN 模式 (Virtual Network Adapter)
+
+普通的系统 HTTP 代理无法接管终端命令行（如 `git`、`npm`、`curl`）以及绝大多数无代理设置入口的应用。
+
+在客户端设置中找到并勾选 **"Enable TUN Mode" (开启 TUN 模式)**：
+
+- **Windows 端**：会安装一个 TAP/TUN 虚拟网卡，建议开启 `auto_detect_interface`。
+- **macOS 端**：会提示授权安装系统 Network Extension (网络扩展)，授权后菜单栏图标变绿即可全盘接管流量。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 开启 TUN 模式后，局域网共享或 NAS 打印机连不上了怎么办？
+
+**答**：请在客户端设置中检查 `Bypass LAN`（绕过局域网）选项是否勾选。Sing-box 默认在 `ip_cidr` 中将 `192.168.0.0/16` 与 `10.0.0.0/8` 设为 `direct` 放行，可防止内网回源受阻。
+
+### Q2: Sing-box GUI 提示 `permission denied` 或无法拉起 TUN 网卡怎么办？
+
+**答**：在 Windows 上，请右键点击客户端图标并选择 **“以管理员身份运行”**；在 macOS 上，请前往“系统设置 -> 隐私与安全性 -> 代理与网络扩展”中予以授权允许。
+
+---
+
+_（相关资源导航：如果您需要采购高性能、IP 干净的 VPS 搭建自己的 Sing-box 桌面通道，欢迎访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速查看 DMIT、搬瓦工及 CloudCone 的独家折扣通道！）_

@@ -15,58 +15,74 @@ import YouTube from "../../components/YouTube.astro";
 
 欢迎来到 **Sing-box** 的世界！如果你刚听说并且打算开始使用 Sing-box 作为你的核心代理工具，那么这篇文章正是为你量身打造的。
 
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **Sing-box 定位**：2026 年最强“通用代理内核”，原生支持 VLESS-Reality、Hysteria 2、TUIC V5、Shadowsocks 等全协议，极致省电且资源占用低。
+> - **客户端推荐**：桌面端推荐 **Mihomo Party** 与 **Sing-box GUI**；移动端 iOS 推荐 **Shadowrocket / SFI**，Android 推荐 **Hiddify Next / SFA**。
+> - **配置核心**：通过导入远程订阅链接一键转换，结合 TUN 虚拟网卡接管全系统流量。
+
 <YouTube id="BAfbkLizFGc" title="Sing-box 新手核心入门实操" />
 
-## Table of contents
+---
 
-## 为什么选择 Sing-box？
+## 🚀 为什么 2026 年大家都在转向 Sing-box？
 
-Sing-box 被社区称为“下一代”代理平台，它不仅有着难以置信的跨平台一致性，还在资源占用方面做到了几乎变态的极致极致。作为“瑞士军刀”级别的全家桶工具，它的主要优势包括：
+Sing-box 被社区称为“下一代通用代理平台”，它不仅有着难以置信的跨平台一致性，还在资源占用方面做到了极致。作为“瑞士军刀”级别的全家桶内核，它的主要优势包括：
 
-1. **轻量与性能：** 用最少的内存跑满千兆带宽。
-2. **多协议原生支持：** 原生支持 VLESS、Trojan、Hysteria2、TUIC、Shadowsocks 等等，你不需要到处寻找乱七八糟的插件。
-3. **强大的路由：** 高度自定义的 JSON 配置可以实现国内外无缝分流、防止 DNS 泄漏、去除广告等等。
+1. **极致轻量与高吞吐**：基于 Go 语言极致优化，常驻内存占用低至 15~30MB，能够轻松跑满千兆乃至万兆宽带。
+2. **前沿协议原生支持**：原生支持 VLESS-Reality、Trojan、Hysteria 2、TUIC V5 等顶级抗封锁协议，无需额外安装复杂的插件。
+3. **高性能 Rule Set 分流**：弃用旧版臃肿的 `.dat` 文本库，全面采用毫秒级启动的 `.srs` 二进制规则集，实现国内外流量无缝切替、防止 DNS 泄漏与广告过滤。
 
+---
 
+## 💻 2026 各平台跨平台客户端选型指南
 
-## 各平台客户端推荐与下载
+Sing-box 本身是一个底层的内核程序，但社区涌现出了许多界面极其优雅的图形化（GUI）客户端：
 
-Sing-box 本身是一个内核工具，但各个平台社区涌现出了许多非常棒的图形化（GUI）客户端！
+### 1. Windows 平台
 
-### Windows 平台
-- **Sing-box Desktop (官方)** 
-  这是一款使用 Flutter 开发的官方 Windows 客户端，简洁流畅。
-- **推荐下载地址**: [GitHub Releases](https://github.com/SagerNet/sing-box/releases)
+- **Sing-box GUI / Desktop（官方推荐）**：使用 Flutter 打造的界面，干净优雅，支持 TUN 模式一键接管系统流量。
+- **Mihomo Party**：2026 年大火的全新桌面客户端，颜值极高，支持一键切换内置 Sing-box 与 Mihomo 内核。
 
-### macOS 平台
-- **SFM (Sing-box for Mac)**
-  非常原生的 macOS 体验。
-- **配置要点**: 确保开启 TUN 虚拟网卡模式以代理全局流量。
+### 2. macOS 平台
 
-### iOS / iPadOS
-- **SFI体验非常完美**
-  目前需在外区 App Store 获取（搜索 Sing-box）。完全免费，支持 iCloud 多端同步。
+- **Sing-box for Mac (SFM)**：完美适配 macOS 苹果设计规范，支持深色模式与菜单栏快速切替，TUN 模式权限管理极佳。
 
-### Android
-- **SFA (Sing-box for Android)**
-  在 Google Play 或者项目 release 中可以直接获取 APK 文件安装，且完美支持 Android 的分应用代理能力（即只让指定 App 走代理）。
+### 3. iOS / iPadOS (iPhone & iPad)
 
-## 如何导入订阅链接？（以 Windows 为例）
+- **Sing-box for iOS (SFI)**：官方客户端，需要非中国区 App Store 账号免费获取，支持 iCloud 多端同步。
+- **Shadowrocket (小火箭) / Stash / Loon**：第三方老牌应用均已完美原生兼容 Sing-box 的 VLESS-Reality 和 Hysteria 2 订阅导入。
 
-对于绝大多数只会用“飞机杯”和“小火箭”的用户来说，在客户端里导入节点是唯一重要的一步。
+### 4. Android (安卓)
 
-1. **启动程序**：打开你的 Sing-box 图形化界面。
-2. **找到 Profiles（配置管理）**：点击 "New Profile"（新建配置）。
-3. **导入链接**：将你的网络服务提供商（机场）给出的订阅地址填入 `Type: Remote`（远程）模式下的 URL 框中。（如果你目前还没有稳定可靠的高速节点订阅，推荐阅读我们的深度评测：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)，获取极具性价比的高速老牌节点服务。）
-4. **一键启动**：点击开始按钮。这时候 Sing-box 会自动建立一个虚拟网卡接管系统流量，你就可以畅游完全开放的互联网世界了！
+- **Sing-box for Android (SFA)**：官方客户端，完美支持 Android 系统级“分应用代理（Per-App Proxy）”，可单独放行微信、支付宝等国内应用。
+- **Hiddify Next**：跨平台全能神器，界面极其傻瓜化，适合纯小白用户一键导入体验。
 
-> **需要注意的是**：如果你的服务商没有提供原生的 Sing-box 订阅链接，请查阅我们的下一篇文章《将 Clash 订阅链接一键转换为 Sing-box 格式的 3 种方法》。
+---
 
-<div className="border-l-4 border-accent bg-accent/8 p-6 my-8 rounded-r-xl">
-  <h4 className="font-bold text-foreground text-base m-0 mb-3 flex items-center gap-2">
-    💡 小贴士
-  </h4>
-  <p className="text-foreground/75 text-sm m-0 leading-relaxed">
-    如果你是拥有专属 VPS 的高阶玩家，请关注我们的 <strong>「服务器搭建」</strong> 标签，里面有硬核的服务端配置代码哦！
-  </p>
-</div>
+## ⚡ 如何导入订阅链接？（极简实操）
+
+对于绝大多数刚接触科学上网的新手来说，导入服务商（机场）提供的节点订阅是唯一关键的步骤：
+
+1. **启动客户端**：打开你的 Sing-box 界面（如 Sing-box GUI 或 Hiddify）。
+2. **新建配置 (Profiles)**：点击 **"New Profile" (新建配置)**。
+3. **填入远程订阅 URL**：选择 **Remote（远程）** 模式，粘入服务商给出的 Sing-box 链接。
+   - _（如果您目前还没有稳定可靠的高速节点订阅，推荐阅读我们的深度评测：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)，获取极具性价比的高速 IPLC 专线节点。）_
+4. **开启 TUN 模式并启动**：勾选 **TUN 模式 (虚拟网卡)** 并点击连接，Sing-box 会接管全局流量，带你流畅畅游开放网络！
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 如果我的机场只提供 Clash 订阅，能直接在 Sing-box 中使用吗？
+
+**答**：可以使用站内转换工具或后端转换服务，将 Clash 的 `yaml` 订阅一键转为 Sing-box 的 `json` 格式，也可以使用 Mihomo Party 或 Hiddify 等支持自动转换的现代化客户端。
+
+### Q2: 开启 TUN 模式后，游戏或 Steam 连接失败怎么办？
+
+**答**：请确保 Sing-box 路由规则中将本地局域网段（`192.168.0.0/16`）及 UDP 53 DNS 解析设为 `direct` 放行，或者在客户端中开启 UDP 代理适配。
+
+---
+
+_（相关资源导航：如果您需要寻找 IP 段干净、网络质量极佳的高端海外直连 VPS 来部署自己的 Sing-box 节点，欢迎访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速获取 DMIT、搬瓦工及 CloudCone 的最新优惠通道！）_
