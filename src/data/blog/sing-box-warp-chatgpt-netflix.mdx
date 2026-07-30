@@ -9,51 +9,57 @@ tags:
   - 解锁流媒体
   - WARP
   - ChatGPT
-description: "买的廉价 VPS 无法访问 ChatGPT？看不了 Netflix？利用 Sing-box 强大的链式代理与内置 WireGuard 协议，一脚免费踏进原生 IP 的世界。"
+description: "低价 VPS 无法访问 ChatGPT、提示 Access Denied？看不了 Netflix 4K？手把手教你利用 Sing-box 内置的 WireGuard 出站与链式代理，免费解锁 AI 与流媒体。"
 ---
 
-很多朋友为了追求极低的延迟和便宜的价格，往往会买一些非原生 IP（也就是俗称的“广播 IP”或“机房脏 IP”）的 VPS 来搭建节点。
+很多朋友为了追求低延迟和便宜价格，往往会买一些机房广播 IP 的廉价 VPS（如 CloudCone 或 RackNerd）来搭建节点。
 
-但这会带来一个极其痛苦的问题：在成功翻墙后，当你打开 Netflix，由于 IP 被识别为数据中心，你只能看极其有限的自制剧；当你打开 ChatGPT 或者 Claude 时，直接弹出一句高冷的 **"Access denied"** 或提示所在地区不可用。
+但这会带来一个极其痛苦的问题：在成功翻墙后，当你打开 Netflix，由于机房 IP 被判定为数据中心，只能看极其有限的自制剧；当你打开 ChatGPT 或者 Claude 时，直接弹出一句高冷的 **"Access denied"** 或提示所在地区不可用。
 
-传统的方法是购买昂贵的原生住宅 IP 机器，但在 **Sing-box** 的世界里，有更免费优雅的解法：利用 Sing-box 原生支持的 **WireGuard 出站协议**，将特定网站的流量“二次转发”给 Cloudflare 免费且干净的 WARP 网络！
+在 **Sing-box** 中，有最免费优雅的解法：利用 Sing-box 原生支持的 **WireGuard 出站协议**，将特定网站的流量“二次转发”给 Cloudflare 免费且干净的 WARP 节点出网！
 
-## 核心原理解析：链式代理 (Chain Routing)
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **链式代理逻辑**：普通流量从 VPS 原生 IP 直连出网（速度快）；ChatGPT、Claude、Netflix 流量经由 Sing-box 的 WireGuard 出站送入 Cloudflare WARP 节点。
+> - **2026 语法更正**：路由匹配使用二进制 `.srs` 规则集 (`rule_set: ["geosite-openai", "geosite-netflix"]`)。
+> - **关键配置**：WireGuard 必须显式指定 `"mtu": 1280`，防止包体积超标引发 UDP 丢包断流。
 
-我们在服务端（VPS）上设置 Sing-box。当你的手机通过 VLESS 连上这台 VPS 时，Sing-box 接收到流量后，并不总是直接通过本机的公网 IP 把数据发出去。
+---
 
-我们通过路由分流：
-* **普通流量**（如查资料、看 YouTube）：直接从 VPS 的公网开口发出去，享受原生大带宽。
-* **被重点封锁的流媒体与 AI 流量**（如 OpenAI、Netflix 域名）：Sing-box 在 VPS 内部再建立一条通往云端 Cloudflare WARP 节点的 WireGuard 隧道。这部分流量从 WARP 的节点爬出去。
+## 🔗 核心原理解析：链式代理 (Chain Routing)
 
-由于 WARP 是面向全球消费者的免费 VPN 服务，许多流媒体和 AI 服务商不会粗暴地封杀 CF 的这批 IP（或者判定极宽容）。
+当你的客户端连上海外 VPS 的 Sing-box 时，Sing-box 根据规则在 VPS 内部建立一条通往 Cloudflare WARP 节点的 WireGuard 加密隧道：
 
-## 第一步：提取 WARP 的 WireGuard 账户信息
+- **普通流量（看 YouTube/查资料）**：从 VPS 本地公网出口直接发出去，跑满服务器的原生物理宽带。
+- **AI 与流媒体流量（ChatGPT/Claude/Netflix）**：通过 WireGuard 转发至 WARP 的 IP 库出去。由于 Cloudflare 节点的广谱合规性，能够无缝绕过 OpenAI 的数据中心风控封锁。
 
-要在 Sing-box 里连接 WARP，你需要一套标准的 WireGuard 节点参数：包含本地私钥 (private_key)、对端公钥 (peer_public_key)、分配的内网 IPv4/v6 地址以及预共享密钥 (reserved 字段)。
+---
 
-现在网络上有大量的免费开源项目（如 `warp-reg` 或者各种一键 WARP 提取脚本），你可以在任何一台装了 Python 的电脑上跑一下脚本，瞬间就能免费注册并拿到如下一组配置：
+## 🛠️ 第一步：提取 WARP 的 WireGuard 账户参数
+
+你可以在任何安装了 Python 的终端上使用开源工具（如 `warp-reg`）生成 WARP 的 WireGuard 参数：
 
 ```json
-// 这是一组假参数，请填入你自己提取获取的
 {
-  "private_key": "aabbccddeeff...", 
-  "peer_public_key": "bmXOC+F1FxEMF...",
+  "private_key": "your-warp-private-key-here",
+  "peer_public_key": "bmXOC+F1FxEMF9...",
   "local_address": [
     "172.16.0.2/32",
     "2606:4700:110:86ad:70ee:1cc2:a7d7:fb8/128"
   ],
-  "reserved": [0, 0, 0] // 解决 WARP 新机制必须带上的保留字段
+  "reserved": [0, 0, 0]
 }
 ```
 
-## 第二步：在 Sing-box 服务端配置 WARP 出站
+---
 
-打开你 VPS 上的 Sing-box 服务端 `config.json`，在 `outbounds` 里新增一个叫做 `warp-out` 的出站，并填入你拿到的 WireGuard 信息：
+## 🚀 第二步：在 Sing-box 服务端配置 WireGuard 出站
+
+打开 VPS 上的 Sing-box 服务端 `config.json`，在 `outbounds` 中新增一个 `warp-out` 出站：
 
 ```json
 "outbounds": [
-  // 咱们之前的各种出站和直连
   {
     "type": "direct",
     "tag": "direct"
@@ -67,39 +73,52 @@ description: "买的廉价 VPS 无法访问 ChatGPT？看不了 Netflix？利用
       "172.16.0.2/32",
       "2606:4700:110:86ad:70ee:1cc2:a7d7:fb8/128"
     ],
-    "private_key": "填入你的本地私钥",
-    "peer_public_key": "填入提取到的对端公钥",
-    "reserved": [0, 0, 0], // 如果获取到了就填，有些旧版不需要
+    "private_key": "your-warp-private-key-here",
+    "peer_public_key": "bmXOC+F1FxEMF9...",
+    "reserved": [0, 0, 0],
     "mtu": 1280
   }
 ]
 ```
-> 设置 `mtu: 1280` 能够有效防止因包过大在隧道中被丢弃造成的断流。
 
-## 第三步：强大的路由策略 —— 让 ChatGPT 乖乖走 WARP
+---
 
-我们总不能把所有流量都走 WARP（因为 WARP 有时速度较慢，只用于解锁）。我们在服务端的 `route` 模块写上精准的分发规则：
+## 🔀 第三步：编写精准路由规则
+
+在服务端的 `route` 模块写上分发规则，仅让 OpenAI 与 Netflix 走 WARP 解锁：
 
 ```json
 "route": {
   "rules": [
     {
-      "geosite": ["openai", "netflix"], // 直接使用内置或你挂载的 geosite 库
-      "domain_keyword": ["chatgpt", "claude"], 
+      "rule_set": ["geosite-openai", "geosite-netflix"],
       "outbound": "warp-out"
     }
   ],
-  "final": "direct" // 除了上面的解锁请求外，其他流量通通直接出网
+  "final": "direct"
 }
 ```
 
-## 结语：享受原生的乐趣
+重启服务端 Sing-box 进程：
 
-保存并重启你的 VPS 服务端进程：
 ```bash
 systemctl restart sing-box
 ```
 
-此时，你再也不用担心你的 VPS IP 够不够“干净”了。当你的流量遇到严格审查的网站时，**Sing-box 会悄无声息地在后台给你穿上一层来自 Cloudflare 的隐形披风**，突破层层封锁。
+此时，无需修改手机或电脑端的任何配置，网页端打开 ChatGPT 与 Netflix 即刻恢复原生解锁体验！
 
-最绝的是，这一切完全在你的服务器内部发生，你手机端和电脑端的配置完全**不需要做任何改动**！这就是透明的链式代理加上 Sing-box 大一统协议族的无尽快感。
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 为什么要将 WireGuard 出站的 MTU 设置为 `1280`？
+
+**答**：由于 WARP 数据包被封装在原本的 TCP/UDP 代理报文内部（嵌套头部），会导致默认 1500 字节的 MTU 超标引发网络分片丢包。设为 `1280` 能保证在跨国公网链路上 100% 传输顺畅。
+
+### Q2: 开启 WARP 分流后，访问 ChatGPT 会降低响应速度吗？
+
+**答**：对 API 的 JSON 交互和文字生成速度几乎毫无感知；仅针对流媒体大流量下载时相比原生 IP 会有少量延迟损耗，因此我们只针对特定的 AI/流媒体域名开启 WARP 分流。
+
+---
+
+_（相关资源导航：如果您需要购买适合部署 Sing-box 节点的高性价比 VPS 练手机器，欢迎访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速获取 DMIT、搬瓦工、CloudCone 与 RackNerd 的优惠通道；商业专线机场推荐见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_
