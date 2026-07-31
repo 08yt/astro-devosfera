@@ -1,6 +1,7 @@
 # Copilot related files
 .github/copilot-instructions.md
-
+.vscode
+.github
 # build output
 dist/
 

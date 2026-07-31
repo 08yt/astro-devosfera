@@ -1,0 +1,125 @@
+---
+title: "Sing-box 抓包与排错指南：2026 开启 Clash API 面板、日志分析与 DNS 泄漏一键排查"
+author: "毛佳国"
+pubDatetime: 2026-07-30T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - 故障排查
+  - 极客探索
+description: "遇到节点连不上、部分网页打不开或者怀疑存在 DNS 泄漏？手把手教你配置 Sing-box 的 experimental.clash_api 模块，连接 MetaCubeXD 与 Yacd 独立可视化控制台，快速分析日志并排查网络死锁。"
+---
+
+在使用 **Sing-box** 的过程中，即便是经验丰富的极客玩家，也难免会遇到各种棘手的网络故障：
+
+- **节点连不上**：点击连接后全网断网，不知道是 VPS IP 掉线还是配置文件语法写错；
+- **部分网页加载极慢**：打开某些海外网站持续转圈，不确定流量是走了 `direct` 直连还是 `proxy` 代理；
+- **怀疑存在 DNS 泄漏**：打开流媒体提示区域受限，想要直观查看每个域名的解析流向。
+
+今天，我们将带你开启 Sing-box 内置的 **`experimental.clash_api`** 可视化控制台，连接 **MetaCubeXD** 或 **Yacd** 独立 Web 面板，并教你如何通过命令行诊断工具快速排查网络故障与 DNS 泄漏！
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **可视化面板**：在 `experimental.clash_api` 中配置 `external_controller: "9090"`，即可在浏览器连接 MetaCubeXD / Yacd 面板实时查看连接流量与切换策略组。
+> - **语法诊断**：在终端运行 `sing-box check -c config.json` 即可秒级排查 JSON 语法与大括号错位。
+> - **日志调优**：故障时将 `log.level` 临时设为 `debug`，可实时追踪 DNS 解析与域名路由阻断细节。
+
+---
+
+## 🖥️ 一、第一步：开启 `experimental.clash_api` 可视化控制台
+
+Sing-box 原生兼容了 Clash 的 External Controller 协议。只需在 `config.json` 的顶层模块中加入 `experimental` 配置：
+
+```json
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "experimental": {
+    "clash_api": {
+      "external_controller": "127.0.0.1:9090", // 控制台监听端口
+      "external_ui": "ui", // 面板前端文件存放目录
+      "secret": "your-secure-secret-here", // 访问密钥
+      "default_mode": "rule"
+    }
+  }
+}
+```
+
+### 接入可视化面板 (MetaCubeXD / Yacd)
+
+1. 在浏览器中打开在线控制面板：[MetaCubeXD Web 控制台](https://metacubexd.pages.dev/)。
+2. 在连接设置中填入你的控制台地址：`http://127.0.0.1:9090`，并填入密钥 `your-secure-secret-here`。
+3. 连接成功后，你可以在面板中：
+   - 实时查看当前的上传/下载瞬时速率曲线；
+   - 在 **"Connections (连接)"** 标签页中，查看每一个 Socket 请求匹配到了哪条路由规则、走的具体是哪个节点；
+   - 在 **"Proxies (节点)"** 标签页中一键测试所有节点的延迟并手动切换出站。
+
+---
+
+## 🛠️ 二、第二步：命令行语法自检与日志分析
+
+### 1. 使用 `sing-box check` 秒查语法错误
+
+在修改配置文件后，无需盲目重启服务。在终端中运行：
+
+```bash
+sing-box check -c /etc/sing-box/config.json
+```
+
+如果提示 `configuration is valid`，说明格式完美；如果存在多写逗号或字段拼写错误，命令行会准确指出错误的行号与上下文。
+
+### 2. 切换 `debug` 日志定位连接死锁
+
+遇到节点连不上时，将 `log.level` 设为 `"debug"`，并在终端实时滚动查看日志：
+
+```bash
+# 查看实时日志
+journalctl -u sing-box -f --no-hostname
+# 或 Docker 环境：
+docker compose logs -f
+```
+
+**日志关键错误特征解读**：
+
+- `connection error ... handshake failed` -> **TLS/uTLS 指纹或证书不匹配**，检查 `server_name`；
+- `dial tcp ... i/o timeout` -> **VPS IP 端口遭遇阻断或防火墙未放行 UDP/TCP 端口**；
+- `dns: failed to lookup` -> **国内/国外 DNS 路由循环死锁**。
+
+---
+
+## 🧪 三、第三步：一键检测与排查 DNS 泄漏
+
+当出现“流媒体报区域限制”时，按照以下步骤排查：
+
+1. **清空系统缓存**：Windows 执行 `ipconfig /flushdns`，Mac 执行 `sudo killall -HUP mDNSResponder`。
+2. **打开检测网站**：访问 [dnsleaktest.com](https://www.dnsleaktest.com/) 进行 **Extended Test**。
+3. **修复泄露**：若发现列表中出现了中国电信/联通/移动的本地 IP，说明国外加密 DNS（`dns-proxy`）没有绑定 `"detour": "proxy-auto-group"`。请参照本站 [《Sing-box 终极 DNS 配置指南》](/posts/sing-box-dns-leak-fakeip/) 进行修正。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 打开 MetaCubeXD 面板提示 `Network Error` 连接失败怎么办？
+
+**答**：请检查 `external_controller` 的监听地址。如果需要从局域网其他设备访问面板，需将 `127.0.0.1:9090` 修改为 `0.0.0.0:9090`，并确保防火墙放行了 9090 端口。
+
+### Q2: 开启 `debug` 日志会导致磁盘空间被塞满吗？
+
+**答**：会。`debug` 日志会记录每一个数据包的握手过程。排错完成后，请务必在 `config.json` 中将 `log.level` 恢复为 `"info"` 或 `"warn"`。
+
+---
+
+## 🏎️ 四、总结与高稳定性节点推荐
+
+掌握了 Clash API 控制台与日志排错技巧后，你已经具备了一名合格 Sing-box 运维极客的核心技能。
+
+然而，**如果排错分析后发现频繁死锁的原因是由于节点线路本身频繁丢包、掉线，那么最省心的方案依然是更换高品质的商业专线。**
+
+推荐阅读：[《“饿饭CC云”怎么样？2026 最新评测》](/posts/efan-cc-cloud-review/)。该服务商全线采用低延迟 IPLC 专线，后台支持一键输出无错配置，带给您完全免除排错烦恼的极速冲浪体验。
+
+---
+
+_（相关资源导航：如果您在排错过程中需要选购 IP 段干净的高配置 VPS 镜像，欢迎访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速获取各大主机商独家折扣通道！）_
