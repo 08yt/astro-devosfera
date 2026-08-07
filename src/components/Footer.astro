@@ -35,7 +35,9 @@ const { noMarginTop = false, class: className, ...attrs } = Astro.props;
           href="/"
           class="group relative flex items-center gap-2 text-lg font-bold tracking-tight"
         >
-          <Logo class="w-28 opacity-80 transition-all duration-300 group-hover:opacity-100 group-hover:scale-105 group-hover:drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)] dark:invert" />
+          <Logo
+            class="w-28 opacity-80 transition-all duration-300 group-hover:scale-105 group-hover:opacity-100 group-hover:drop-shadow-[0_0_8px_rgba(var(--accent-rgb),0.5)] dark:invert"
+          />
         </a>
         <p
           class="max-w-xs text-center font-cartograph text-[11px] leading-relaxed tracking-wide text-foreground/40 sm:text-start"
@@ -47,7 +49,7 @@ const { noMarginTop = false, class: className, ...attrs } = Astro.props;
       <!-- Social links -->
       <div class="flex flex-col items-center gap-3 sm:items-end">
         <span
-          class="font-cartograph text-[10px] tracking-wider text-muted-foreground uppercase select-none"
+          class="text-muted-foreground font-cartograph text-[10px] tracking-wider uppercase select-none"
           >社群</span
         >
         <div class="flex items-center gap-2">
@@ -55,7 +57,7 @@ const { noMarginTop = false, class: className, ...attrs } = Astro.props;
             SOCIALS.map(social => (
               <LinkButton
                 href={social.href}
-                class="footer-social-btn group relative flex size-9 items-center justify-center rounded-xl border border-border/20 bg-muted/20 transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:bg-accent/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+                class="footer-social-btn group relative flex size-9 items-center justify-center rounded-xl border border-border/20 bg-muted/20 transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:bg-accent/10 focus-visible:ring-2 focus-visible:ring-accent/50 focus-visible:outline-none"
                 title={social.linkTitle}
               >
                 <social.icon class="size-4.5 fill-transparent stroke-foreground/60 stroke-[1.5px] transition-all duration-300 group-hover:stroke-accent" />
@@ -78,19 +80,38 @@ const { noMarginTop = false, class: className, ...attrs } = Astro.props;
     <div
       class="mt-4 flex flex-col items-center justify-between gap-4 sm:flex-row"
     >
-      <div class="flex flex-col items-center sm:items-start gap-1.5 cursor-default">
+      <div
+        class="flex cursor-default flex-col items-center gap-1.5 sm:items-start"
+      >
         <p class="font-cartograph text-[11px] tracking-wide opacity-35">
-          &copy; {currentYear} {SITE.title}。保留所有权利。
+          &copy; {currentYear}
+          {SITE.title}。保留所有权利。
         </p>
-        <div class="flex items-center gap-3 font-cartograph text-[11px] opacity-40">
-          <a href="/disclaimer" class="hover:text-accent hover:opacity-100 transition-opacity">免责声明</a>
+        <div
+          class="flex items-center gap-3 font-cartograph text-[11px] opacity-40"
+        >
+          <a
+            href="/disclaimer"
+            class="transition-opacity hover:text-accent hover:opacity-100"
+            >免责声明</a
+          >
           <span>·</span>
-          <a href="/terms" class="hover:text-accent hover:opacity-100 transition-opacity">服务条款</a>
+          <a
+            href="/terms"
+            class="transition-opacity hover:text-accent hover:opacity-100"
+            >服务条款</a
+          >
           <span>·</span>
-          <a href="/privacy" class="hover:text-accent hover:opacity-100 transition-opacity">隐私政策</a>
+          <a
+            href="/privacy"
+            class="transition-opacity hover:text-accent hover:opacity-100"
+            >隐私政策</a
+          >
         </div>
       </div>
-      <p class="font-cartograph text-[11px] tracking-wide opacity-30 cursor-default mt-2 sm:mt-0">
+      <p
+        class="mt-2 cursor-default font-cartograph text-[11px] tracking-wide opacity-30 sm:mt-0"
+      >
         使用 <span class="text-accent">&#9829;</span> 制作，伴随许多咖啡
       </p>
     </div>
@@ -115,6 +136,7 @@ const { noMarginTop = false, class: className, ...attrs } = Astro.props;
   }
 
   .footer-social-btn:hover {
-    box-shadow: 0 8px 20px -4px color-mix(in srgb, var(--accent) 30%, transparent);
+    box-shadow: 0 8px 20px -4px
+      color-mix(in srgb, var(--accent) 30%, transparent);
   }
 </style>
