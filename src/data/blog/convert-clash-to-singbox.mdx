@@ -7,46 +7,84 @@ draft: false
 tags:
   - 基础入门
   - 配置转换
-description: "讲解决很多老用户从 Clash 升级到 Sing-box 最头痛的问题：“机场没有提供 Sing-box 的纯订阅怎么办？”本文教你如何平滑转换配置格式。"
+description: "老牌机场没有提供 Sing-box 纯 JSON 订阅怎么办？本文教你使用在线 Subconverter、2026 Mihomo Party/Hiddify 客户端与 Docker 自建转换服务，一键转换为 Sing-box 格式。"
 ---
 
-很多习惯了旧版网络工具的朋友一定遇到过这个麻烦：老牌软件 Clash 现在几乎不维护了，社区逐渐向 Sing-box 靠拢。然而由于商业上的滞后，很多老旧“机场”（节点提供商）还没有原生提供 Sing-box 的订阅配置 `config.json`，只愿意提供基于 yaml 格式的 Clash 订阅。
+很多习惯了旧版网络工具的朋友一定遇到过这个麻烦：老牌软件 Clash 停止维护后，社区生态全面转向 **Sing-box**。然而由于部分机场滞后，只提供 YAML 格式的 Clash 订阅。
 
-*(备忘：如果你正在寻找一个稳定高速的优质节点来配合 Sing-box 使用，推荐阅读我们的深度评测：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)。)*
+本文将手把手教你利用 2026 最新开源工具，将旧版 Clash 订阅零开销一键转换为 Sing-box 标准 JSON 配置！
 
-本文将手把手教你在不需要手动编写代码的情况下，将 Clash 等老式订阅一键转换！
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **转换原理**：利用 Subconverter 解析器拉取旧版 Clash YAML，将其中的出站节点（IP、端口、UUID、uTLS 指纹）重构为 Sing-box 的 `outbounds` 模块。
+> - **小白推荐**：使用开源 2026 GUI 工具 **Mihomo Party** 或 **Hiddify Next**，直接粘贴 Clash 链接自动完成 Sing-box 内核转换。
+> - **隐私安全**：若订阅包含敏感专线节点，建议使用 Docker 本地自建 Subconverter 后端，防范第三方 API 泄露。
 
-## Table of contents
+---
 
-## 什么是订阅转换？
-简单说，Clash 配置、V2ray 订阅（Base64）和 Sing-box 的 JSON 格式结构都不一样。订阅转换（Subconverter）工具就是中间件：它拉取你原有的配置文件，分析出里面的节点（IP、端口和密码等信息），然后再输出为 Sing-box 的 `outbounds` 模块节点格式。
+## 💡 为什么需要订阅转换？
 
-### 方法一：使用在线转换网站（最推荐新手）
+Clash 使用 YAML 语法，而 Sing-box 采用原生标准的 JSON 语法，且路由模块完全不同：
 
-有很多热心开发者用后端搭建了可以在线免费使用的转换器。这就像是一个“翻译官”。
+- Clash 依赖 `.dat` 地理库与 `rules` 数组。
+- Sing-box 2026 标准依赖二进制 `.srs` 规则集 (`rule_set`)，且对 VLESS-Reality 的 `xtls-r-flow` 流控有更严谨的校验。
 
-**推荐在线转化网站:**
-- `sub.v1.mk` 一直都比较稳定。
-- `api.nameless13.com` 支持非常丰富的配置参数及策略组分配。
+订阅转换工具的核心逻辑，就是提取其中的节点密钥与公网服务器地址，并生成合规的 `config.json`。
 
-**具体操作：**
-1. **输入链接：** 在网站上找到 “订阅链接” 或 “URL” 的输入框，将你的 Clash `https://.../clash` 订阅地址粘贴进去。
-2. **选择目标客户端：** 在“客户端”或“目标平台”下拉菜单中，选择 **Sing-box**。
-3. **获取转换结果：** 点击生成。随后你会得到一大串全新的 URL。将这个全新的网址填写进 Sing-box 客户端，就能成功使用了。
+---
 
-*（注意：转换网站可能会留存你的节点订阅链接，如果对安全性要求极高，建议看方法二。）*
+## 🛠️ 转化方法全解
 
-### 方法二：使用带本地解析功能的工具 (GUI)
+### 方法一：使用 2026 GUI 客户端自动转换（最推荐）
 
-有些整合型客户端能够自动做这件事。
-例如，Windows 下有一个叫 **Nekobox (Nekoray)** 的桌面客户端。它的内核就是支持基于 Xray 和 Sing-box 的。
-你直接将 V2ray 订阅或是 Clash 订阅粘贴进去，它的系统可以自动识别并把包含所有参数的节点转化为界面里的独立卡片，甚至可以直接转导出（Export）Sing-box 配置文件 `.json`，从而供你使用原版官方客户端！
+在 2026 年，你完全不需要手动去网页端做繁琐转换。现代 GUI 客户端已经自带转换引擎：
 
-### 方法三：进阶篇！本地甚至云端部署 Subconverter （仅限高玩）
+1. **Mihomo Party / Hiddify Next**：直接在软件中点击“添加订阅”，粘贴原有的 Clash `https://.../clash` 链接。
+2. 软件后台会自动调用转换模块，将 YAML 节点重构为 Sing-box 兼容的出站结构，并在本地提供可视化节点切换。
 
-如果不想暴露自己的订阅隐私给免费在线平台，有很多高段位玩家会选择自己通过 Docker 搭建 [Subconverter](https://github.com/tindy2013/subconverter) 工具。 
-这就需要你拥有一台 VPS 云服务器或者家里的软路由。你可以通过 Docker Compose 直接拉取 `tindy2013/subconverter:latest` 镜像，暴露 API 端口。自己调用自己服务产生的规则配置！
+---
 
-## 总结
-未来随着越来越多提供商适应生态的转变，Sing-box 格式迟早会成为原生标配功能。在这个过渡阶段，这 3 个方法足够解决 99% 的订阅兼容问题。
-赶紧使用这些小办法去享受 Sing-box 的纯净世界吧！
+### 方法二：使用在线开源转换后端 (Subconverter API)
+
+如果你依然希望使用原版的 Sing-box CLI 或 官方 SFA/SFI 客户端：
+
+1. 打开合规的在线转换站点（如 `sub.v1.mk` 或 `api.nameless13.com`）。
+2. 在 **订阅链接** 填入你的 Clash 链接。
+3. 在 **目标客户端** 选择 `Sing-box`。
+4. 点击“生成订阅”，获取全新生成的 `https://...` 转换 URL，直接填入 Sing-box 客户端中。
+
+---
+
+### 方法三：Docker 自建 Subconverter 转换服务（极客首选）
+
+如果担心第三方网页泄露专线节点与 Token 隐私，可以在你的 VPS 云服务器上通过 Docker Compose 自建转换器：
+
+```yaml
+version: "3.8"
+services:
+  subconverter:
+    image: tindy2013/subconverter:latest
+    container_name: subconverter
+    ports:
+      - "25500:25500"
+    restart: always
+```
+
+配合 Caddy 绑定公网域名，即可搭建专属于你的隐私转换后端！
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 转换后的 Sing-box 配置提示 `rule_set format error` 怎么处理？
+
+**答**：旧版转换器可能输出了字符串形式的 `geosite` 规则。2026 标准要求配置必须使用 `"format": "binary"` 的 `.srs` 规则集，建议升级后端镜像版本或使用 Mihomo Party 自动转换。
+
+### Q2: 在线转换会不会导致我的专线流量被盗用？
+
+**答**：公共转换 API 理论上能获取你的订阅凭证。对于包含 **中国电信 CN2 GIA** 或 **联通 AS9929** 高价专线的机场，强烈建议通过 Docker 本地部署自建转换器。
+
+---
+
+_（相关资源导航：如果您正在寻找支持原生 Sing-box 订阅与 4K IPLC 专线的高质量服务商，欢迎阅读我们的深度评测 [《“饿饭CC云”怎么样？2026 最新评测》](/posts/efan-cc-cloud-review/)，或访问 [《YGJC•BEST 极客精选资源导航》](/best/) 查看 DMIT、搬瓦工及 CloudCone 优惠通道！）_
