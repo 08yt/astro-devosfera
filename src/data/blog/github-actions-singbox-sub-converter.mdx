@@ -7,131 +7,35 @@ draft: false
 tags:
   - 配置转换
   - 极客探索
-description: "深度揭示公共订阅转换器的隐私泄露安全风险。手把手教你如何使用 GitHub 免费私有仓库配合 GitHub Actions 与 Python 转换脚本，全自动、绝对安全地将 Clash 订阅转换为 Sing-box 专属 JSON 模板，并实现多设备极私密订阅分发。"
+description: "拒绝第三方公共订阅转换泄露 Token！手把手教你利用 GitHub 私有仓库配合 GitHub Actions 与 Python 脚本，零成本自动化生成 Sing-box 专属 JSON 订阅并极私密分发。"
 ---
 
-在科学上网的圈子里，**“订阅转换”** 几乎是每个玩家的刚需。为了将机场提供商分发的标准 Clash YAML 订阅，转换成支持新一代内核（如 **Sing-box**）的专属 JSON 配置，多数人会习惯性地使用网上搜到的各种免费“公共订阅转换网站”。
+在科学上网中，将机场分发的 Clash YAML 转换为 **Sing-box** 专属 JSON 配置是高频刚需。
 
-然而，这背后隐藏着巨大的**安全灾难与隐私泄露风险**：
+然而，将包含订阅 Token 的链接贴入公共转换网站存在严重**隐私泄露风险**（黑客可盗刷流量或截获节点）。
 
-> [!CAUTION]
-> **公共订阅转换器的安全隐患**：
-> 当你将包含 Token 秘钥的原始订阅链接输入公共转换网页时，**转换器后台服务器可以轻而易举地截获并记录你的完整订阅地址**。黑客或不良站长不仅可以轻易盗刷你的全部账户流量，还能通过节点分析窥探你的服务器 IP 及出口线路，甚至审计你的上网轨迹。
+今天我们将分享一套极客专属的 **“零成本、高隐私”** 自动化方案：利用 **GitHub Actions（免费 CI/CD 流水线）** 配合 **Python 脚本**，在私有仓库内自动转换并发布至专属私密 Gist！
 
-为了彻底摆脱隐私裸奔，今天我们将分享一套极客专属的**“零成本、高隐私”**自动化方案：利用 **GitHub Actions（免费的自动化流水线）** 配合一个几行的 **Python 脚本**，在你的 **GitHub 私有仓库**内自动拉取、自动转换，并生成仅属于你自己的 Sing-box 极私密订阅配置文件。
-
----
-
-## 💡 一、自动化流水线方案设计
-
-本方案的核心思路如下：
-
-1.  **私有仓库安全防护**：在 GitHub 上创建一个 100% 不公开的私有仓库（Private Repo），将机场订阅链接以密文形式保存在 GitHub Secrets 中，确保除了你本人，外界绝无法读取。
-2.  **GitHub Actions 定时触发**：设置 Workflow，让 GitHub 服务器每天凌晨（例如 04:00）自动唤醒虚拟机执行转换。
-3.  **Python 脚本精准渲染**：拉取最新的节点，解析协议，并注入到你本地定义好的、包含分流、DNS规则和策略组的 Sing-box 完美 JSON 模板中。
-4.  **极私密分发**：将生成的 `config.json` 自动更新到你的**私密 GitHub Gist**，生成一个带有复杂随机 Hash 的独享 Raw 地址供客户端配置拉取。
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **安全防泄露**：订阅 URL 存在 GitHub Secrets 中，仅在 GitHub 隔离沙盒容器中运行，外界无法偷窥。
+> - **自动化定时**：GitHub Actions `cron: "0 20 * * *"` 每日定时拉取最新节点并注入本地 Sing-box JSON 模板。
+> - **极私密分发**：利用 GitHub PAT 自动更新至私密 Gist（Secret Gist），客户端通过加密的 Raw 链接拉取配置。
 
 ---
 
-## 🛠️ 二、第一步：创建私有仓库与配置 Secrets
+## 🛠️ GitHub Actions 自动转换流水线模板
 
-1.  登录你的 GitHub 账号，新建一个仓库，名字可以随意（例如 `my-sub-converter`），**务必将可见性勾选为 Private（私有）**。
-2.  进入该仓库的 **Settings** -> **Secrets and variables** -> **Actions**。
-3.  点击 **New repository secret**，添加你的机场原始订阅链接：
-    - **Name**: `SUB_URL`
-    - **Value**: 输入机场分发给你的完整 Clash / Trojan 订阅链接。
-
----
-
-## 🐍 三、第二步：编写 Python 转换脚本
-
-在仓库的根目录下新建一个名为 `convert.py` 的脚本。该脚本的作用是下载订阅、解析节点并合并到你的模板中。
-
-```python
-import os
-import json
-import base64
-import requests
-
-# 1. 从 Github Secrets 读取原始订阅链接
-SUB_URL = os.environ.get("SUB_URL")
-
-# 本地 Sing-box 模板配置（只保留空的 outbounds，其余 dns/route 规则已写死）
-TEMPLATE = """
-{
-  "log": { "level": "info", "timestamp": true },
-  "dns": {
-    "servers": [
-      { "tag": "dns-direct", "address": "223.5.5.5", "detour": "direct" },
-      { "tag": "dns-proxy", "address": "https://1.1.1.1/dns-query" }
-    ],
-    "rules": [
-      { "outbound": "any", "server": "dns-direct" },
-      { "rule_set": ["geosite-cn"], "server": "dns-direct" }
-    ]
-  },
-  "inbounds": [
-    { "type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 2080 }
-  ],
-  "outbounds": [],
-  "route": {
-    "rules": [
-      { "rule_set": ["geosite-cn", "geoip-cn"], "outbound": "direct" }
-    ],
-    "final": "proxy-auto-group"
-  }
-}
-"""
-
-def fetch_sub_nodes():
-    try:
-        response = requests.get(SUB_URL, timeout=10)
-        # 解密 Base64 格式节点数据
-        raw_content = base64.b64decode(response.text).decode('utf-8')
-        return raw_content.splitlines()
-    except Exception as e:
-        print(f"Error fetching sub: {e}")
-        return []
-
-def main():
-    nodes = fetch_sub_nodes()
-    outbounds = []
-
-    # 示范：解析 Shadowsocks 协议（ss://...）
-    for node in nodes:
-        if node.startswith("ss://"):
-            # 此处编写提取 ss 地址、端口、密码和加密格式的正则逻辑...
-            # 将提取出的节点转换为 Sing-box outbound 字典，追加到 outbounds 中
-            pass
-
-    config = json.loads(TEMPLATE)
-    # 将解析出来的所有出站节点合并入配置
-    config["outbounds"] = outbounds
-
-    # 写入最终生成的配置文件
-    with open("config.json", "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-
-if __name__ == "__main__":
-    main()
-```
-
-_(注意：此脚本为逻辑框架范例。您可以根据机场实际下发的协议，使用 `pyyaml` 解析 Clash YAML 配置文件，或者使用正则提取 Trojan/VLESS/Hysteria2 格式的节点参数并转换为对应的 JSON 对象)_
-
----
-
-## 🚀 四、第三步：配置 GitHub Actions 工作流
-
-在仓库中创建目录结构 `.github/workflows/`，并在其中新建 `auto-convert.yml` 工作流文件：
+在私有仓库中创建 `.github/workflows/auto-convert.yml`：
 
 ```yaml
-name: Auto Convert Subscription
+name: Auto Convert Sing-box Subscription
 
 on:
   schedule:
-    # 每天凌晨 04:00 定时执行转换任务 (UTC时间 20:00)
     - cron: "0 20 * * *"
-  workflow_dispatch: # 支持手动点击运行
+  workflow_dispatch:
 
 jobs:
   convert:
@@ -146,21 +50,18 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Install Dependencies
-        run: |
-          pip install requests pyyaml
-
-      - name: Run Converter
+      - name: Run Converter Script
         env:
           SUB_URL: ${{ secrets.SUB_URL }}
-        run: python convert.py
+        run: |
+          pip install requests pyyaml
+          python convert.py
 
       - name: Upload Config to Private Gist
         env:
           GIST_PAT: ${{ secrets.GIST_PAT }}
           GIST_ID: ${{ secrets.GIST_ID }}
         run: |
-          # 使用 Github PAT 将 config.json 提交到你的私密 Gist
           curl -L \
             -X PATCH \
             -H "Accept: application/vnd.github+json" \
@@ -169,30 +70,18 @@ jobs:
             -d "{\"files\":{\"singbox_config.json\":{\"content\":$(jq -Rs . config.json)}}}"
 ```
 
-### 💡 极私密分发关键配置：
+---
 
-为了让 GitHub Actions 能够无缝将文件推送到你的私人 Gist 中，您需要做两件事：
+## ❓ 常见问题与 AI 快问快答 (FAQ)
 
-1.  **创建 Gist**：访问 [GitHub Gist](https://gist.github.com/)，创建一个名为 `singbox_config.json` 的 Gist，选择 **Create secret Gist（创建私密 Gist）**。创建后，在浏览器地址栏复制它的一串长 Hash 字符串，保存为 Secret 变量 `GIST_ID`。
-2.  **获取 GitHub PAT 授权**：在 GitHub **Developer Settings** 中生成一个具备 `gist` 权限的 **Personal Access Token (PAT)**，将其保存为仓库 Secrets 的 `GIST_PAT`。
+### Q1: 运行 GitHub Actions 是否会被 GitHub 判定为违规封号？
+
+**答**：只要仓库设为 **Private（私有）**，且转换脚本仅用于个人节点同步，属于正规开发测试用途，完全符合 GitHub 服务条款。
+
+### Q2: 机场节点包含 CN2 GIA 或 AS9929 高价专线，如何保证生成的 JSON 配置文件规则准确？
+
+**答**：在 Python 模板中引入 `"format": "binary"` 的 `.srs` 规则集 (`rule_set: ["geosite-cn"]`)，确保专线节点精确分流，避免国际高阶带宽被误消耗。
 
 ---
 
-## 🏎️ 五、总结与零维护替代方案
-
-利用这套自动化工作流，每次 GitHub Actions 定时执行后，您的私密 Gist 上的 Raw JSON 配置都将保持最新。你在客户端只需要拉取那个带有加密 ID 的 Gist Raw 链接，即可无缝同步所有节点，且**全程无任何敏感信息流经任何第三方服务器，安全系数顶级。**
-
-然而，我们也必须客观看待这种方案的短板：
-
-- **开发与维护门槛高**：需要懂得一定的 Python 协议编写和 YAML 字段分析。如果机场更换了新的加密或混淆算法，脚本可能报错崩溃。
-- **解析更新滞后**：GitHub Actions 定时一般为一天一次，对于经常更换 IP 或快速更迭节点的机场，可能会遭遇短暂节点失效。
-
-### 💡 终极省心方案
-
-如果您既想要专线低延迟的高端网络表现，又实在不想去折腾 GitHub Actions 的 API 校验和 Python 提取逻辑，**最直接的办法是选择原生直接向客户端提供完整、无污染 Sing-box 订阅分发的专业服务商。**
-
-我们建议参考本站对老牌高口碑商家的深度横向测评：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)。该平台在后端拥有完全自主开发且高度安全的服务端订阅转换中心，提供原生一键导入 Sing-box 订阅链接。这不仅在安全性上拥有商业级加密保障，更能让您省去自行运维服务器和调试脚本的时间，将精力完全集中在您的开发工作上。
-
----
-
-_（相关资源导航：如果您需要购买独立 IP 的云服务器来部署自己的私有订阅分发网关，欢迎访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速获取 DMIT、搬瓦工、CloudCone 以及 RackNerd 等各大主机的最新折扣通道。）_
+_（相关资源导航：如果您需要购买独立 VPS 部署私有订阅网关，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工及 CloudCone 优惠；无需折腾的商用专线推荐见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_

@@ -7,61 +7,48 @@ draft: false
 tags:
   - Homelab
   - DNS安全
-description: "深度理顺家庭 Homelab 与软路由网络中 AdGuard Home 与 Sing-box 的接力解析架构。手把手教学如何配置端口与路由分流，彻底根治 DNS 环流（Loop）与解析延迟居高不下的顽疾。"
+description: "理顺家庭 Homelab 与软路由网络中 AdGuard Home 与 Sing-box 的接力解析架构。手把手教学配置端口与路由分流，彻底根治 DNS 环流（Loop）死循环顽疾。"
 ---
 
-在家庭 **Homelab** 或软路由网络架构中，许多高级玩家都会选择将 **AdGuard Home** 与 **Sing-box** 组合使用，以打造极致的内网体验：
+在家庭 **Homelab** 或软路由网络中，将 **AdGuard Home**（负责前台广告过滤）与 **Sing-box**（负责后台防污染分流）组合使用是极客最喜爱的方案。
 
-- **AdGuard Home**：负责前台拦截。它拥有极其精美的 Web UI 控制台、直观的查询日志监控、以及百万级的广告与隐私域名拦截规则（Adblock List）。
-- **Sing-box**：负责后台分流。凭借其高性能的内建 DNS 解析引擎与规则路由分流（Rule Set），能实现最精确的节点调度和分流。
+但“双主解析”最致命的隐患是 **DNS 环流（DNS Loop 死循环）**：
+`AdGuard Home (53) -> Sing-box (5353) -> 国内直连 -> 误指回 AdGuard Home -> CPU 爆满 100% 死锁`
 
-然而，**“双主解析”面临的最大敌人是 DNS 环流（DNS Loop，死循环）**：
-`客户端请求 -> AdGuard Home -> Sing-box -> 路由分流走 direct -> 调用系统/软路由默认 DNS（即 AdGuard Home） -> 回到 AdGuard Home ...`
+今天，我们将通过严密的端口隔离与分流配置，打造一套 100% 防环流、毫秒级响应的纯净 DNS 架构！
 
-这个死循环会在顷刻间让你的 CPU 占用率飙升到 100%，内存爆满，导致家庭内网全面瘫痪。
-
-今天，我们将通过严密的端口规划与分流配置，教你如何让 AdGuard Home 与 Sing-box 完美防环流配合，实现极致延迟的纯净网络。
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **接力链路**：终端设备 -> AdGuard Home (Port 53 过滤广告) -> 转发给 Sing-box (Port 5353 智能分流)。
+> - **防环流铁律**：Sing-box 在解析国内域名时，`dns-direct` 必须强制指定公共 DNS (如 `223.5.5.5`) 物理网卡直连，**绝对不能指回本地 127.0.0.1**。
+> - **缓存策略**：AdGuard Home 禁用或保留极小缓存，让贴近网络底层的 Sing-box 承担全局 DNS 缓存。
 
 ---
 
-## 📐 一、极致 DNS 接力架构拓扑设计
-
-为了彻底避免 DNS 环流，我们必须建立**单一方向的接力链条**：
+## 📐 1. 完美防环流接力拓扑
 
 ```
-[局域网终端设备]
-       │
-       ▼ (DNS 请求，UDP 53 端口)
-┌─────────────────────────────────┐
-│     AdGuard Home (前台)         │ ───► 负责：网页广告拦截、日志监控、缓存
-└─────────────────────────────────┘
-       │
-       ▼ (过滤后的合法请求转发，UDP 5353 端口)
-┌─────────────────────────────────┐
-│     Sing-box DNS (后台)         │ ───► 负责：分流判断 (国内直连 vs 国外代理)
-└─────────────────────────────────┘
-       │
-       ├─► (国内域名) ──► 物理直连 ──► 公共直连 DNS (如 223.5.5.5) *绕过本地网卡*
-       │
-       └─► (国外域名) ──► 代理出站 ──► 加密代理 DNS (如 1.1.1.1)
+[局域网终端] -> AdGuard Home (Port 53, 广告拦截/日志)
+                       │
+                       ▼ (转发给)
+                 Sing-box (Port 5353, 智能分流)
+                       │
+         ┌─────────────┴─────────────┐
+         ▼                           ▼
+(国内域名: dns-direct)      (国外域名: dns-proxy)
+  物理直连 223.5.5.5         加密代理 1.1.1.1
 ```
-
-### 💡 避坑关键点：
-
-为了切断循环，**Sing-box 在解析国内直连域名时，其出站 DNS 请求必须直接发往公网公共 DNS（如阿里或腾讯 DNS），绝对不能指向本地的 AdGuard Home。**
 
 ---
 
-## 🛠️ 二、第一步：配置 Sing-box (后台监听 5353)
+## 🛠️ 2. Sing-box 后端 (Port 5353) 配置模板
 
-我们首先配置 Sing-box 的内建 DNS 模块，使其作为 AdGuard Home 的上游解析服务器。
-
-编辑 Sing-box 的配置文件 `config.json`：
+在 Sing-box `config.json` 中配置：
 
 ```json
 {
   "inbounds": [
-    // 监听本地 5353 端口，接收来自 AdGuard Home 的 DNS 请求
     {
       "type": "direct",
       "tag": "dns-in",
@@ -69,24 +56,13 @@ description: "深度理顺家庭 Homelab 与软路由网络中 AdGuard Home 与 
       "listen_port": 5353
     }
   ],
-  "outbounds": [
-    { "type": "direct", "tag": "direct" },
-    {
-      "type": "socks",
-      "tag": "proxy",
-      "server": "127.0.0.1",
-      "server_port": 1080
-    }
-  ],
   "dns": {
     "servers": [
-      // 1. 国内直连解析：配置 detour 强制其物理网卡直连，绝不能指回本地！
       {
         "tag": "dns-direct",
         "address": "223.5.5.5",
         "detour": "direct"
       },
-      // 2. 国外代理解析：通过代理出站进行防污染查询
       {
         "tag": "dns-proxy",
         "address": "https://1.1.1.1/dns-query",
@@ -94,15 +70,9 @@ description: "深度理顺家庭 Homelab 与软路由网络中 AdGuard Home 与 
       }
     ],
     "rules": [
-      // 路由分流规则：如果是国内网站，使用国内直连 DNS 解析
       {
         "rule_set": ["geosite-cn"],
         "server": "dns-direct"
-      },
-      // 其余默认走代理加密 DNS 解析
-      {
-        "outbound": "any",
-        "server": "dns-proxy"
       }
     ]
   },
@@ -111,7 +81,7 @@ description: "深度理顺家庭 Homelab 与软路由网络中 AdGuard Home 与 
       "tag": "geosite-cn",
       "type": "remote",
       "format": "binary",
-      "url": "https://raw.githubusercontent.com/lyc8503/sing-box-rules/rule-set-geosite/geosite-cn.srs",
+      "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
       "download_detour": "proxy"
     }
   ]
@@ -120,64 +90,25 @@ description: "深度理顺家庭 Homelab 与软路由网络中 AdGuard Home 与 
 
 ---
 
-## 🛠️ 三、第二步：配置 AdGuard Home (前台监听 53)
+## 🛠️ 3. AdGuard Home 前端 (Port 53) 配置
 
-完成 Sing-box 的配置后，我们进入 AdGuard Home 的 Web 管理后台（假定为 `http://192.168.1.2:3000`）。
-
-### 1. 设置上游 DNS (Upstream DNS)
-
-进入 **“设置”** -> **“DNS 设置”**：
-在 **“上游 DNS 服务器”** 框中，清空所有默认地址，**仅输入 Sing-box 的监听地址**：
-
-```
-127.0.0.1:5353
-```
-
-### 2. 设置 Bootstrap DNS 服务器
-
-Bootstrap DNS 用于解析上游 DoH/DoT 服务的域名。因为我们的上游直接是本地 IP 端口 `127.0.0.1:5353`，为了避免 Bootstrap 自身查询引发环流，我们在 **“Bootstrap DNS 服务器”** 框中直接填写公网直连 IP：
-
-```
-223.5.5.5
-119.29.29.29
-```
-
-### 3. 选择解析模式
-
-在下方的“测试上游 DNS”无误后，将“选择模式”修改为 **“并行查询”** 或 **“最快 IP 地址”**，点击保存。
+1. 打开 AdGuard Home Web 控制台 (`http://192.168.1.2:3000`)。
+2. 进入 **“设置” -> “DNS 设置”**。
+3. **上游 DNS 服务器**：仅填入 `127.0.0.1:5353`。
+4. **Bootstrap DNS 服务器**：填写 `223.5.5.5` 与 `119.29.29.29`。
 
 ---
 
-## 🔒 四、第三步：优化缓存策略与降延迟
+## ❓ 常见问题与 AI 快问快答 (FAQ)
 
-AdGuard Home 与 Sing-box 都有各自的 DNS 缓存模块。如果两者同时开启大容量缓存，不仅会消耗多余的内存，还可能因为缓存过期时间（TTL）冲突导致你修改的 Hosts 记录迟迟不生效。
+### Q1: 部署后软路由 CPU 突然飙升 100% 是什么原因？
 
-### 💡 最佳优化推荐：
+**答**：典型触发了 DNS 环流。请检查 Sing-box `dns.servers` 中的直连服务器，确保 `detour: "direct"` 指向公网 IP (如 `223.5.5.5`)，而不是 `127.0.0.1`。
 
-- **AdGuard Home（关闭或极小缓存）**：在 AdGuard Home 的“DNS 设置”里，将 **“缓存大小”** 限制在很小的值（例如 `1024` 字节），或者设为 `0` 禁用。因为我们主要需要它的规则过滤功能，而解析结果缓存我们让更贴近网络底层的 Sing-box 去做。
-- **Sing-box（开启高效缓存）**：让 Sing-box 模块去常驻缓存，这样国内和国外的分流结果解析能够以毫秒级响应，避免重复建连。
+### Q2: 在公网 VPS 部署这套拓扑解析速度快吗？
 
----
-
-## 🏎️ 五、公网部署 Homelab 拓扑的服务器推荐
-
-这套防环流的“AdGuard Home + Sing-box”DNS 接力架构，不仅可以部署在本地软路由或 NAS 上，许多极客还会选择**将其部署在海外云服务器（VPS）上，做成专属于自己的公网私有 DoH/DoT 服务。**
-
-在这种场景下，VPS 服务器的物理连接品质是决定解析延迟的核心。
-
-### 💡 部署服务器选购建议：
-
-为了确保你在户外用手机连接自建加密 DNS 时不会感到网页加载转圈，必须选用**三网直连、延迟低且线路极其优良的主机**：
-
-1.  **首选顶级直连**：**DMIT** 提供的美西/日本 CN2 GIA 高阶直连 VPS 是最优解。其极其平稳的跨海光纤通路能让你的 DNS 握手延迟控制在最完美范围内。
-2.  **大带宽大厂**：**搬瓦工 (BandwagonHost)**，国内 GIA 多网优化，性能强悍，适合承载高并发 DNS 查询。
-3.  **高性价比练手**：**CloudCone** 或 **RackNerd** 便宜小鸡，年付低至十几美元，非常适合 Homelab 玩家首次上云调试探索。
-
-> [!TIP]
-> 关于各厂商服务器的最新动态和特价折扣端口，请移步至本站的 [《极客第一只小鸡：2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
-
-当然，如果你日常不想把时间折腾在 Docker 容器桥接、端口转发及复杂的 ACL 防火墙策略上，**直接订阅配备了专线低延迟直连网络的商业机场是最省心的一站式解决方案**。欢迎参考本站发布的 [《“饿饭CC云”怎么样？2026 最新深度评测》](/posts/efan-cc-cloud-review/)，其自带的高稳定分流策略能够完全免除您的维护之忧。
+**答**：取决于 VPS 到国内的延迟。建议配合 **DMIT** 或 **搬瓦工** 具有 **中国电信 CN2 GIA** 或 **联通 AS9929** 优化回程的 VPS，可保持低于 40ms 的极速解析。
 
 ---
 
-_（极客资源精选：如果您在建站或搭建过程中需要注册便宜域名、寻找免费苹果账号下载辅助工具，请访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速获取所有极客必备资源！）_
+_（相关资源导航：如果您需要购买适合部署 Homelab 与 DNS 服务的 VPS 节点，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线机场评测见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_
