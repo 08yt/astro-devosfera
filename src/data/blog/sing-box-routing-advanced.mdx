@@ -8,116 +8,129 @@ tags:
   - 规则进阶
   - Sing-box
   - 路由分流
-description: "掌握如何让国内网站直连、国外网站走代理，甚至如何屏蔽特定的广告域名或恶意 IP。本指南提供直接可跑的路由规则代码片段。"
+description: "掌握如何让国内网站直连、国外网站走代理，甚至如何屏蔽特定的广告域名或恶意 IP。本文提供 2026 最新 Sing-box 二进制规则集 (SRS) 路由配置代码。"
 ---
 
-经过了基础入门，相信你已经搞懂了在 `outbounds` 里面配置多个代理节点。但在日常高频使用中，如果你让*所有的*流量都走代理，不仅会耗费机场套餐的流量，访问国内的京东、淘宝时也会非常卡顿，甚至被判定为异地登录。
+经过基础入门，你已经在 `outbounds` 里面配置好了多个代理节点。但在日常使用中，如果你让*所有的*流量都走代理，不仅会耗费机场流量，访问国内京东、淘宝时也会极其卡顿。
 
-这个时候，我们就需要进入 `route` (路由) 的核心操作室了！
+这个时候，就需要进入 Sing-box 的 `route` (路由分流) 核心操作室了！
 
-## Table of contents
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **分流原理**：Sing-box 根据域名、IP、进程名等规则，将流量分发给指定的 `outbound`（如 `direct` 直连、`proxy` 代理或 `block` 屏蔽）。
+> - **2026 规则规范**：不再推荐旧版 `.dat` 依赖，全面采用二进制 `.srs` 规则集 (`rule_set: ["geosite-cn"]`) 实现毫秒级超轻量匹配。
+> - **规则优先级**：`rules` 数组内自上而下匹配，匹配即止。最上方的规则优先级最高。
+> - **国际版阅读**：本指南同时发表于 Medium 平台：[Sing-box Routing Advanced Guide on Medium](https://medium.com/@mjiaguo/sing-box-routing-advanced-50fac34d9a7c)。
 
-## 什么是分流规则？
+---
 
-分流的本质是“条件判断”：如果用户请求的目标访问符合某条规则，Sing-box 就会把它分发到指定的 `outbound` 出站去。Sing-box 在路由功能上提供了极其丰富的匹配方式。
+## 🛠️ 1. 2026 标准国内外分流配置 (基于 Rule Set)
 
-### 1. 基础国内外分流 (基于 Geo)
-
-最常用的也是最省心的方案，是利用 `geosite` 和 `geoip` 数据包直接一刀切。
-在你的配置中的 `route` 模块增加以下代码：
-
-```json
-"route": {
-  "geoip": {
-    "download_url": "https://github.com/SagerNet/sing-geoip/releases/latest/download/geoip.db",
-    "download_detour": "proxy"
-  },
-  "geosite": {
-    "download_url": "https://github.com/SagerNet/sing-geosite/releases/latest/download/geosite.db",
-    "download_detour": "proxy"
-  },
-  "rules": [
-    {
-      "geosite": ["cn"],
-      "geoip": ["cn", "private"],
-      "outbound": "direct"
-    }
-  ],
-  "auto_detect_interface": true
-}
-```
-**解析：**
-我们首先引用了官方维护的 GEO 数据包（中国 IP 和域名的集合）。规则库中的意思是：如果是 `cn` 域名或是国内的 IP，就走我们名为 `direct` 的直连通道。
-
-### 2. 屏蔽特定的垃圾网站或广告服务
-
-假如你想在系统级别抛弃一些烦人的广告追踪器或者你不喜欢的网站，我们可以配置一个 `block` 出站，并在路由规则中最优先匹配它。
-
-**第一步：增加黑洞出站**
+在配置文件的 `route` 模块配置二进制 `.srs` 规则集：
 
 ```json
-"outbounds": [
-  { ...你的主要节点代理... },
-  { "type": "direct", "tag": "direct" },
-  {
-    "type": "block",
-    "tag": "block"   // 流量到了这里会被直接丢弃
+{
+  "route": {
+    "rule_set": [
+      {
+        "tag": "geosite-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+        "download_detour": "proxy"
+      },
+      {
+        "tag": "geoip-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
+        "download_detour": "proxy"
+      }
+    ],
+    "rules": [
+      {
+        "rule_set": ["geosite-cn", "geoip-cn"],
+        "outbound": "direct"
+      }
+    ],
+    "final": "proxy"
   }
-]
-```
-
-**第二步：配置拦截规则**
-要注意，在 JSON 配置的 `rules` 数组里，排在越上面的规则优先级越高！我们要把拦截配置放在数组的最上面。
-
-```json
-"route": {
-  "rules": [
-    {
-      "geosite": ["category-ads-all"],
-      "domain_suffix": ["baidu-ads.com", "spam.example"],
-      "outbound": "block"
-    },
-    {
-      "geosite": ["cn"],
-      "outbound": "direct"
-    }
-  ]
 }
 ```
 
-### 3. 为特殊 App 分配专门的节点
+---
 
-有时候，你希望使用 ChatGPT 或 Netflix 时强制走某个解锁特定区域（比如美国）的节点，而其它的日常访问走香港节点。
+## 🛠️ 2. 屏蔽广告与黑名单域名
 
-假设你已经在 `outbounds` 里建好了名字叫 `proxy-us` 和 `proxy-hk` 两个节点，则：
+创建一个 `block` 出站，并在 `rules` 顶部优先进行拦截：
 
 ```json
-"route": {
-  "rules": [
-    {
-      "geosite": ["openai", "netflix"],
-      "domain_suffix": ["chatgpt.com"],
-      "outbound": "proxy-us"
-    },
-    {
-      "geosite": ["telegram", "twitter"],
-      "outbound": "proxy-hk"
-    }
-  ]
+{
+  "outbounds": [
+    { "type": "selector", "tag": "proxy", "outbounds": ["node-us", "node-hk"] },
+    { "type": "direct", "tag": "direct" },
+    { "type": "block", "tag": "block" }
+  ],
+  "route": {
+    "rules": [
+      {
+        "domain_suffix": ["baidu-ads.com", "adservice.google.com"],
+        "outbound": "block"
+      },
+      {
+        "rule_set": ["geosite-cn", "geoip-cn"],
+        "outbound": "direct"
+      }
+    ],
+    "final": "proxy"
+  }
 }
 ```
 
-## 进阶玩法总结
+---
 
-Sing-box 路由能力的潜力是巨大的，它不仅仅支持域名和 IP 的匹配，还支持**按发起请求的进程名 (`process_name`)、甚至是 WiFi 的 SSID (`wifi_ssid`)来进行灵活分流**。 
+## 🛠️ 3. ChatGPT / Netflix 专属节点分流
 
-有了这套基础架构的认识，配合上社区丰富的规则集合（Rule Sets），你就能像配置路由器一样定制出一套独属于你的极速冲浪之旅！
+为受限的 AI 与流媒体应用分派特定解锁出站：
 
-<div className="border-l-4 border-accent bg-accent/8 p-6 my-8 rounded-r-xl">
-  <h4 className="font-bold text-foreground text-base m-0 mb-3 flex items-center gap-2">
-    ⚠️ 提示
-  </h4>
-  <p className="text-foreground/75 text-sm m-0 leading-relaxed">
-    对于大多数普通用户，手写这么长段的规则非常容易漏掉半角逗号。大家可以使用现成的 GUI 客户端自带的规则组装功能，只需一键勾选就可以了！
-  </p>
-</div>
+```json
+{
+  "route": {
+    "rules": [
+      {
+        "domain_suffix": ["chatgpt.com", "oaistatic.com"],
+        "outbound": "node-us"
+      },
+      {
+        "domain_suffix": ["netflix.com"],
+        "outbound": "node-hk"
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 🌐 国际专栏与扩展阅读
+
+对于希望阅读英文版架构或向海外开发者分享本教程的朋友，可访问我们在 Medium 上发布的同步文章：
+
+- **Medium 专栏**：[Sing-box Routing Advanced: Traffic Splitting, Blocking, and On-Demand Proxying](https://medium.com/@mjiaguo/sing-box-routing-advanced-50fac34d9a7c)
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 匹配规则中 `domain` 与 `domain_suffix` 有什么区别？
+
+**答**：`domain` 要求域名完全精确匹配（如 `"google.com"`）；而 `domain_suffix` 会包含子域名匹配（如 `".google.com"` 包含 `mail.google.com` 和 `maps.google.com`）。
+
+### Q2: 自建 Sing-box 节点搭配哪种线路分流体验最好？
+
+**答**：国外代理出站建议搭配 **中国电信 CN2 GIA** 或 **联通 AS9929** 高速线路 VPS；流媒体分流建议搭配拥有原生家宽 IP 的香港/日本机房。
+
+---
+
+_（相关资源导航：如果您需要购买适合分流部署的高质量 VPS 节点，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线机场评测见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_
