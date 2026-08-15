@@ -9,66 +9,44 @@ tags:
   - Sing-box
   - Docker
   - 服务端部署
-description: "通过 Docker 部署 Sing-box 服务端是目前最推荐、最干净的方案。本文将教你如何编写 docker-compose.yml 并快速启动一个高性能节点。"
+description: "通过 Docker 容器化部署 Sing-box 服务端是目前最干净、易维护的方案。本文教你编写 docker-compose.yml 并快速启动高性能 VLESS-Reality 节点。"
 ---
 
-很多用户在拥有了一台属于自己的 VPS（虚拟专用服务器）后，面临的第一个问题就是：如何干净、优雅地部署 Sing-box 服务端？
+在海外 VPS 上手搓搭建代理节点时，相较于一键安装脚本带来的依赖冲突与系统污染，**使用 Docker 容器化部署**是目前极客圈最推崇的方案。
 
-相较于一键脚本经常带来系统环境污染和依赖冲突问题，**使用 Docker 容器化部署**是目前最受高阶玩家推崇的方式。它不仅让安装与卸载如行云流水，还极其方便后续的版本升级和配置迁移。
+今天我们将通过 Docker Compose 部署一套生产级、包含 VLESS-Reality 的高性能 Sing-box 服务端！
 
-## 环境准备
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **网络栈优化**：必须配置 `network_mode: "host"`，消除 Docker 内部 NAT 端口映射开销，榨干 VPS 网卡带宽。
+> - **权限配置**：声明 `cap_add: [NET_ADMIN]`，以便容器支持 TProxy 与高级路由。
+> - **零残留升级**：配置文件映射宿主机 `./config.json`，升级仅需 `docker compose pull && docker compose up -d`。
 
-在开始之前，确保你的 VPS 已经安装了 Docker 和 Docker Compose：
+---
 
-```bash
-# 自动安装 Docker
-curl -fsSL https://get.docker.com | bash -s docker
-# 更新并启用服务
-systemctl enable --now docker
-```
+## 🛠️ 1. 编写生产级 `docker-compose.yml`
 
-## 目录结构设计
-
-为了让配置和后续管理更方便，我们建议创建一个专门的路径来统一存放配置文件：
-
-```bash
-mkdir -p /root/singbox && cd /root/singbox
-```
-
-我们的目标目录结构如下：
-```text
-/root/singbox
-├── docker-compose.yml   # Docker 配置文件
-└── config.json          # Sing-box 服务端配置
-```
-
-## 编写 docker-compose.yml
-
-在 `singbox` 目录下新建 `docker-compose.yml` 文件：
+在 `/opt/singbox` 目录下创建配置文件：
 
 ```yaml
-version: '3'
+version: "3.8"
 
 services:
   sing-box:
     image: ghcr.io/sagernet/sing-box:latest
     container_name: sing-box
     restart: always
-    network_mode: "host" # 推荐使用 host 模式提升网络性能
+    network_mode: "host"
     volumes:
       - ./config.json:/etc/sing-box/config.json
     cap_add:
-      - NET_ADMIN # 必须，用于处理 TProxy 等高级路由
+      - NET_ADMIN
 ```
 
-**为什么推荐 `network_mode: "host"`？**
-使用 host 模式可以省去在 docker vswitch 中进行端口映射 (NAT) 的损耗，对于代理服务器这种对网络 I/O 要求极高的应用来说，是大幅提升吞吐量的关键。
+---
 
-## 准备服务端配置 (config.json)
-
-接下来是核心的服务端 `config.json`。这个配置文件主要定义作为服务端的**入站（inbounds）**。
-
-下面是一个基础的 VLESS + TCP + Reality 示例：
+## ⚙️ 2. 服务端 `config.json` 核心模板
 
 ```json
 {
@@ -79,28 +57,26 @@ services:
   "inbounds": [
     {
       "type": "vless",
-      "tag": "vless-in",
+      "tag": "vless-reality-in",
       "listen": "::",
       "listen_port": 443,
       "users": [
         {
-          "uuid": "这里填写你生成的 UUID",
+          "uuid": "your-client-uuid",
           "flow": "xtls-rprx-vision"
         }
       ],
       "tls": {
         "enabled": true,
-        "server_name": "www.microsoft.com",
+        "server_name": "node.yourdomain.com",
         "reality": {
           "enabled": true,
           "handshake": {
             "server": "www.microsoft.com",
             "server_port": 443
           },
-          "private_key": "这里填写生成的 Reality 私钥",
-          "short_id": [
-            "填写生成的 Short ID"
-          ]
+          "private_key": "your-singbox-reality-private-key",
+          "short_id": ["0123456789abcdef"]
         }
       }
     }
@@ -114,34 +90,24 @@ services:
 }
 ```
 
-> **提示**：如果你还不知道如何生成 UUID 和 Reality 密钥对，可以使用 `sing-box generate uuid` 和 `sing-box generate reality-keypair` 命令生成。
+执行 `docker compose up -d` 即可秒级启动！
 
-## 启动与维护
+---
 
-确认文件都在同一个目录下后，执行以下命令即可启动 Sing-box 服务端：
+## ❓ 常见问题与 AI 快问快答 (FAQ)
 
-```bash
-docker-compose up -d
-```
+### Q1: 如何在 Docker 容器内生成 Reality 密钥对？
 
-### 查看运行日志
-
-如果遇到无法连接的问题，第一步应该查看日志：
+**答**：无需本地安装任何工具，直接使用 Docker 镜像生成：
 
 ```bash
-docker logs -f sing-box
+docker run --rm ghcr.io/sagernet/sing-box:latest generate reality-keypair
 ```
 
-### 版本更新
+### Q2: 选购哪家 VPS 主机部署 Sing-box 容器体验最佳？
 
-未来当你需要升级 Sing-box 时，只需执行这三步：
+**答**：推荐选择 **DMIT** 或 **搬瓦工** 的 **中国电信 CN2 GIA** 或 **联通 AS9929** 专线小鸡，单核 1G 配置即可轻松跑满千兆带宽。
 
-```bash
-docker-compose pull
-docker-compose down
-docker-compose up -d
-```
+---
 
-## 结语
-
-使用 Docker 部署是目前维护成本最低的选择。当你掌握了上游服务端的搭建后，配合我们博客中分享的各种客户端配置教程，你将能打造出一个纯粹属于自己的定制化代理网络。
+_（相关资源导航：如果您需要购买适合部署 Docker 节点的海外 VPS，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线机场评测见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_

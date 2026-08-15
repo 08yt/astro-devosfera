@@ -8,85 +8,30 @@ tags:
   - 拓展教程
   - OpenWrt
   - 透明代理
-description: "瞄准软路由与家庭宽带受众，手把手教你如何在 OpenWrt 路由器上原生部署极轻量、低延迟的 Sing-box Tproxy 透明代理系统，实现全家设备免配置科学上网与无感分流。"
+description: "软路由与家庭宽带受众首选！手把手教你在 OpenWrt 路由器上原生部署轻量、低延迟的 Sing-box Tproxy 透明代理，实现全家设备免客户端科学上网。"
 ---
 
-手机和电脑上的代理软件一旦切断，家里的电视盒子、智能音箱、游戏主机（如 PS5、Switch、Apple TV）还是无法直接访问广阔的互联网。这就是为什么网络极客们热衷于在**软路由（或旁路由）**上折腾透明代理的原因。
+手机和电脑上的代理软件一旦切断，家里的电视盒子、智能音箱、游戏主机（PS5、Switch、Apple TV）还是无法直接访问海外互联网。
 
-相比于 OpenClash、PassWall 等臃肿复杂的图形化套壳插件，**原生部署 Sing-box 的 Tproxy（透明代理）模式**，由于不依赖任何 Web 前端，内存占用往往不足 15MB，且对 UDP 的转发能力极佳，成为了极致低延迟和高稳定性玩家的“圣杯”。
+相比于 OpenClash、PassWall 等臃肿复杂的图形插件，**原生部署 Sing-box 的 Tproxy（透明代理）模式**，内存占用不足 15MB，且对 UDP 流量转发性能极佳，是低延迟和高稳定性软路由玩家的“圣杯”。
 
-今天这篇 2026 最新保姆级实操教程，将带你彻底搞懂并手搓出这套终极客厅网络方案。
+今天我们将带你手搓出这套终极客厅网络方案！
 
----
-
-## 🧐 Tproxy vs TUN：为什么路由器首选 Tproxy？
-
-在 Linux 路由器上，实现透明接管内网流量有两种主流技术：
-
-1.  **TUN 虚拟网卡模式**：Sing-box 虚拟出一个网卡（如 `tun0`），利用内核路由表将流量强行塞入该网卡。虽然上手最简单，但在千兆高并发下，由于需要经过虚拟网卡的多次内存复制，CPU 负载会偏高，甚至拖累局域网传输速度。
-2.  **Tproxy (Transparent Proxy) 模式**：通过 Linux 的 **iptables / nftables** 规则，在网络层直接将数据包的转发目标改写为 Sing-box 的监听端口。**流量无需经过虚拟网卡，直接在内核层完成重定向。**
-
-> 🏆 **结论：**
-> Tproxy 拥有**极低的 CPU 占用、几乎零内存抖动，且对游戏党赖以生存的 UDP 流量有着完美的、原生的转发性能**。因此，软路由部署首选 Tproxy！
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **TProxy vs TUN**：TProxy 通过内核 iptables/nftables 直接改写网络层转发，无需创建虚拟网卡二次复制内存，CPU 负载极低，UDP 转发性能拉满。
+> - **局域网保护**：路由规则首行必须为 `geoip: ["private"]` 强制放行，避免 HomeKit 智能家居和局域网 NAS 传输绕路。
+> - **2026 标准**：使用二进制 `.srs` 规则集 (`rule_set: ["geosite-cn"]`) 与 `inbounds.tproxy` 监听 `7893` 端口。
 
 ---
 
-## 🛠️ 第一步：下载与安装 Sing-box 核心
+## 🛠️ 1. OpenWrt 部署 Sing-box TProxy 核心配置
 
-OpenWrt 的底层其实就是一个精简版的 Linux 系统。我们可以直接通过 SSH 连入路由器，为所欲为：
-
-1. **SSH 登入路由器**：使用终端执行 `ssh root@192.168.1.1`，输入您的路由器密码。
-2. **下载对应架构的核心**（以最主流的 x86_64 软路由为例）：
-   ```bash
-   # 下载官方编译的二进制包
-   wget https://github.com/SagerNet/sing-box/releases/download/v1.9.0/sing-box-1.9.0-linux-amd64.tar.gz
-   # 解压文件
-   tar -zxvf sing-box-1.9.0-linux-amd64.tar.gz
-   # 移入系统可执行目录并赋予权限
-   mv sing-box-1.9.0-linux-amd64/sing-box /usr/bin/sing-box
-   chmod +x /usr/bin/sing-box
-   ```
-3. **验证安装**：执行 `sing-box version`，如果正确输出版本号，说明核心安装成功！
-
----
-
-## ⚙️ 第二步：编写“黄金版”透明代理 JSON 配置文件
-
-在路由器端，我们需要单独创建一个极简、高性能的 `config.json`，保存在 `/etc/sing-box/config.json`。
-
-这套配置的核心在于：**只接管 TCP/UDP 流量，排除局域网私有网段（避免 HomeKit 和 NAS 崩溃），并完美拦截 DNS 泄露。**
+在 `/etc/sing-box/config.json` 写入核心配置：
 
 ```json
 {
-  "log": {
-    "level": "info",
-    "timestamp": true
-  },
-  "dns": {
-    "servers": [
-      {
-        "tag": "dns-direct",
-        "address": "223.5.5.5",
-        "detour": "direct"
-      },
-      {
-        "tag": "dns-proxy",
-        "address": "https://1.1.1.1/dns-query",
-        "detour": "proxy-auto"
-      }
-    ],
-    "rules": [
-      {
-        "outbound": "any",
-        "server": "dns-direct"
-      },
-      {
-        "geosite": ["cn"],
-        "server": "dns-direct"
-      }
-    ],
-    "final": "dns-proxy"
-  },
   "inbounds": [
     {
       "type": "tproxy",
@@ -97,109 +42,96 @@ OpenWrt 的底层其实就是一个精简版的 Linux 系统。我们可以直�
       "sniff_override_destination": true
     }
   ],
-  "outbounds": [
-    {
-      "type": "selector",
-      "tag": "proxy-auto",
-      "outbounds": ["proxy-node-1", "proxy-node-2"]
-    },
-    {
-      "type": "vless",
-      "tag": "proxy-node-1",
-      "server": "your-server-ip",
-      "server_port": 443,
-      "uuid": "your-uuid",
-      "tls": {
-        "enabled": true,
-        "server_name": "your-sni.com"
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns-direct",
+        "address": "223.5.5.5",
+        "detour": "direct"
+      },
+      {
+        "tag": "dns-proxy",
+        "address": "https://1.1.1.1/dns-query",
+        "detour": "proxy"
       }
-    },
-    {
-      "type": "direct",
-      "tag": "direct"
-    }
-  ],
-  "route": {
-    "geoip": {
-      "path": "/etc/sing-box/geoip.db"
-    },
-    "geosite": {
-      "path": "/etc/sing-box/geosite.db"
-    },
+    ],
     "rules": [
       {
-        "geoip": ["private", "cn"],
+        "rule_set": ["geosite-cn"],
+        "server": "dns-direct"
+      }
+    ]
+  },
+  "route": {
+    "rules": [
+      {
+        "ip_cidr": [
+          "127.0.0.0/8",
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "192.168.0.0/16"
+        ],
         "outbound": "direct"
       },
       {
-        "geosite": ["cn"],
+        "rule_set": ["geosite-cn", "geoip-cn"],
         "outbound": "direct"
       }
     ],
-    "final": "proxy-auto"
-  }
+    "final": "proxy"
+  },
+  "rule_set": [
+    {
+      "tag": "geosite-cn",
+      "type": "remote",
+      "format": "binary",
+      "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+      "download_detour": "proxy"
+    },
+    {
+      "tag": "geoip-cn",
+      "type": "remote",
+      "format": "binary",
+      "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
+      "download_detour": "proxy"
+    }
+  ]
 }
 ```
 
-> **注意事项：**
->
-> - `inbounds` 类型设为了 `tproxy`，监听端口是 `7893`。
-> - `route.rules` 第一条必须为 `geoip: ["private"]`，这会强制让局域网设备之间的互相通信直连，不走代理，这对于 HomeKit 智能家居、NAS 局域网传输的稳定起着生死攸关的作用。
-
 ---
 
-## 🔀 第三步：开启 Linux 路由转发与 nftables 规则配置
+## 🔀 2. nftables 流量重定向脚本
 
-安装好核心并写好配置后，由于流量还在物理网卡上跑，我们必须写一段 Linux 脚本，把流量“吸入”我们的 `7893` Tproxy 监听端口。
-
-在 `/etc/init.d/sing-box` 中创建自启动守护脚本，并写入以下核心 nftables 重定向规则：
+在 OpenWrt 系统启动脚本中加入转发规则：
 
 ```bash
-# 开启 Linux 系统内核 IPv4/IPv6 路由转发
+# 开启内核转发
 sysctl -w net.ipv4.ip_forward=1
-sysctl -w net.ipv6.conf.all.forwarding=1
 
 # 创建 TPROXY 专属路由表 100
 ip rule add fwmark 1 lookup 100
 ip route add local default dev lo table 100
 
-# 编写 nftables 规则，重定向流量
+# 编写 nftables 重定向规则
 nft add table ip singbox
 nft add chain ip singbox prerouting { type filter hook prerouting priority 0 \; }
-
-# 排除局域网和私有 IP 段
 nft add rule ip singbox prerouting ip daddr { 127.0.0.0/8, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } return
-
-# 将其余 TCP 和 UDP 流量打上 fwmark 1 标签，送入 100 路由表（进而进入 Sing-box 的 7893 端口）
 nft add rule ip singbox prerouting meta l4proto { tcp, udp } tproxy to :7893 meta mark set 1
 ```
 
-把这段配置保存后设置为开机自启。从此，只要连上你这台路由器的 WiFi 设备，不管是冷门的游戏机还是不支持客户端配置的电视盒子，全部都会瞬间实现无感智能分流与科学上网！
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 全家设备接入透明代理，看 4K 视频流量暴涨怎么办？
+
+**答**：自建 VPS 流量有限且单 IP 易受风控。建议软路由透明代理绑定无限量或大流量的商业 IEPL 专线服务，推荐阅读 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)。
+
+### Q2: 为什么部署后 Apple TV 提示“网络未连接”？
+
+**答**：请确保在 `dns.rules` 中将 Apple 探针域名（如 `captive.apple.com`）放行直连，避免连通性测试被误导向代理。
 
 ---
 
-## ⚖ 大流量透明代理：自建 VPS 的不可承受之重
-
-全屋设备（智能电视、手机、iPad、PC）统一走透明代理后，用户往往会遇到另一个重大的财务或网络痛点：
-
-- **流量暴涨**：大屏幕电视看 4K 视频，一小时会消耗数 GB 甚至数十 GB 流量。自建 VPS 的“小鸡套餐”通常只有每月数百 GB 的额度，可能看不了几天电影就因流量耗尽被强制断网。
-- **IP 封锁风险**：家里的设备并发连接极多，如果所有连接全部打向你的单一自建 VPS IP，极易触发 GFW 的主动探测与流量风控，导致 VPS 永久被墙，成本极高。
-
-> 💡 **客厅娱乐的终极省心互补方案：**
-> 面对全屋大流量的消耗，**购买大带宽、无限额度或大流量的高性价比商业机场是更明智的战术互补**。
->
-> 商业机场在云端拥有庞大的节点池和专线传输（永不封锁 IP），能轻松分担您自建小鸡的流量压力。推荐参阅我们写得极其详尽的评测文章：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)。
->
-> 饿饭CC云提供的高性价比大额套餐和全球高速直连节点，搭配您刚才配置好的 OpenWrt 原生 Sing-box Tproxy，能为客厅的 4K 观影提供最坚实无忧的流量后盾。
-
----
-
-## 🏁 总结
-
-在路由器上直接手搓原生 Sing-box Tproxy 虽有一定的配置门槛，但其榨干物理硬件的极致性能与纯净的系统后台，是普通套壳图形化软件所无法比拟的。
-
-把全家网关交付给这样一头极致的“小兽”，你将真正体会到什么是“网络自由”的终极爽感！
-
----
-
-_（本文关联阅读：如果您在寻找更适合与软路由透明代理相配合的多平台客户端、免费代理节点源或是详细的配置转换工具，欢迎查阅我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速避坑，一站式购齐所有极客利器！）_
+_（相关资源导航：如果您需要购买适合部署软路由节点的海外 VPS，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线推荐见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_
