@@ -8,73 +8,30 @@ tags:
   - 拓展教程
   - 服务器搭建
   - Cloudflare
-description: "VPS IP 被墙了怎么救？手把手教你如何利用 Sing-box 配合 WebSocket 与 gRPC 协议，套用免费 Cloudflare CDN 复活你的受限节点，彻底隐藏真实 IP 并防主动探测。"
+description: "VPS IP 被阻断无法连通？手把手教你使用 Sing-box 配合 WebSocket 与 gRPC 协议套用免费 Cloudflare CDN 隐藏真实 IP 并绝处逢生。"
 ---
 
-很多手搓 VPS 自建 Sing-box 节点的朋友，在享受了几天极速网络后，常常会遭遇突然的重击：**VPS IP 被 TCP 阻断（俗称被墙）了**。
+很多手搓 VPS 自建 Sing-box 节点的朋友，常会遭遇突然的重击：**VPS IP 被 TCP 阻断（被墙）了**。
 
-具体表现为：海外服务器的 SSH 连不上，或者节点延迟变成 `-1` / 连线直接超时，但是使用海外在线工具检测发现服务器依然在线。遇到这种开局 IP 就挂掉或者中途突发被墙的窘境，最经典的免成本解法就是 —— **套用免费的 Cloudflare CDN。**
+海外工具检测服务器在线，但国内终端连线直接超时。遇到这种情况，最经典的零成本解法就是 —— **套用免费的 Cloudflare CDN 边缘代理**。
 
-今天这篇 2026 最新进阶实战指南，将手把手教你如何利用 Sing-box 服务端配合 **WebSocket (WS)** 与高能的 **gRPC** 协议套上 Cloudflare 小黄云，让你的“半死小鸡”起死回生！
+今天我们将通过 Sing-box 服务端配合 **WebSocket (WS)** 与高性能 **gRPC** 协议套上小黄云，让“被墙小鸡”起死回生！
 
----
-
-## 🎯 核心原理解析：CDN 是如何救活被封 IP 的？
-
-原本你的直接连接路径是这样的：
-`你的设备` ──(直接发起 TCP 连接)──> `墙（审查并阻断 IP）` ──x──> `VPS (真实 IP 已黑)` ❌
-
-套用 Cloudflare (简称 CF) 的 CDN 后，连接路径变成了：
-`你的设备` ──(合法的 HTTPS 流量)──> `Cloudflare 边缘节点 (干净的 IP)` ────> `CF 回源中转` ────> `VPS (真实 IP)` ✅
-
-因为 Cloudflare 在全球拥有数万台边缘服务器，且其 IP 段绝大多数在国内是可以正常连通的。你的客户端实际只与 Cloudflare 的边缘节点握手，Cloudflare 再在云端将流量回源分发给你的 VPS。
-
-在这个过程中，**你的真实 VPS IP 被完美隐藏在云后，墙只看到你访问了一个普通的网页，因此不仅能成功复活节点，还能从源头上杜绝 VPS 的真实 IP 再次被封锁。**
-
-> ⚠️ **重要提示：**
-> 由于 Cloudflare 不支持代理纯粹的裸 TCP/UDP 流量（例如原版的 VLESS + Reality 或 Trojan），回源协议必须伪装成 Web 流量。我们目前最常用的是 **WebSocket** 以及性能更优异、资源占用更低的 **gRPC** 协议。
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **CDN 复活原理**：客户端与 Cloudflare 边缘节点建立 HTTPS 握手，CF 在云端将流量回源分发给被墙的 VPS，真实 IP 被隐藏在云后。
+> - **协议限制**：Cloudflare 仅支持代理 HTTP/HTTPS 类流量，必须使用 **VLESS + WebSocket** 或 **VLESS + gRPC**（严禁配置 `flow: "xtls-r-flow"`）。
+> - **延迟与提速**：默认分配的 CDN IP 晚高峰可能拥堵，配合 **CloudflareST（优选 IP 工具）** 将 `server` 改为本地低延迟 IP 可达到秒开 4K。
 
 ---
 
-## 🛠️ 第一步：域名准备与 Cloudflare 托管
+## 🛠️ 1. Sing-box 服务端配置 (WebSocket / gRPC 双入站)
 
-要开启 CDN 加速，必须拥有一个域名。
-
-1. **获取域名**：您可以去 NameSilo、GoDaddy 等平台购买任意后缀的便宜域名（如 `.top`、`.xyz`，一年仅需几元人民币）。
-2. **托管至 CF**：注册并登录 [Cloudflare 官网](https://www.cloudflare.com/)，点击“添加站点”，输入您的域名，将域名商后台的 NameServer (DNS 服务器) 修改为 Cloudflare 提供的地址。
-3. **添加 DNS 解析**：
-   - 在 CF 的「DNS」面板中，点击「添加记录」。
-   - **类型**：选择 `A 记录`。
-   - **名称**：例如填 `cdn`（完整域名即为 `cdn.yourdomain.com`）。
-   - **IPv4 地址**：填写你那台**被墙的 VPS 真实 IP**。
-   - **代理状态 (Proxy status)**：**必须开启橙色小云朵**（已代理）。
-
----
-
-## 🔒 第二步：Cloudflare SSL/TLS 证书模式选择
-
-进入 Cloudflare 控制台的「SSL/TLS」面板，这里决定了数据流经 CF 时的加密模式：
-
-- **灵活 (Flexible) 模式**：
-  - _数据流向_：`客户端` ──(HTTPS 加密)──> `CF 节点` ──(80端口 HTTP 明文)──> `VPS`。
-  - _优点_：配置极简，VPS 服务端不需要申请安装证书，也不用开启 TLS，最适合小白“救鸡”。
-- **完全/完全严格 (Full / Full Strict) 模式**：
-  - _数据流向_：`客户端` ──(HTTPS 加密)──> `CF 节点` ──(443端口 HTTPS 加密)──> `VPS`。
-  - _优点_：全程加密，最为安全，但需要你在 VPS 服务端申请 SSL 证书（可以用 acme.sh 申请免费证书，或者直接在 CF 后台生成源站证书并下载到 VPS）。
-
-_本教程将以最实用的 **Flexible（灵活）模式** 进行配置演示，最大程度规避证书申请失败带来的挫败感。_
-
----
-
-## 🚀 第三步：配置 Sing-box 服务端 (WebSocket / gRPC 二合一)
-
-登录您的 VPS 服务端，编辑 `/etc/sing-box/config.json` 配置文件。我们将同时监听 **WebSocket** 和 **gRPC** 两个入站通道，端口设为 `80`（CF 灵活模式默认回源不加密端口）：
+在 VPS 上的 `/etc/sing-box/config.json` 部署回源入站：
 
 ```json
 {
-  "log": {
-    "level": "info"
-  },
   "inbounds": [
     {
       "type": "vless",
@@ -83,13 +40,13 @@ _本教程将以最实用的 **Flexible（灵活）模式** 进行配置演示�
       "listen_port": 80,
       "users": [
         {
-          "uuid": "your-uuid-goes-here",
+          "uuid": "your-client-uuid",
           "flow": ""
         }
       ],
       "transport": {
         "type": "ws",
-        "path": "/mysecretpath-ws",
+        "path": "/mysecret-ws",
         "max_early_data": 2048,
         "early_data_header_name": "Sec-WebSocket-Protocol"
       }
@@ -101,13 +58,13 @@ _本教程将以最实用的 **Flexible（灵活）模式** 进行配置演示�
       "listen_port": 8080,
       "users": [
         {
-          "uuid": "your-uuid-goes-here",
+          "uuid": "your-client-uuid",
           "flow": ""
         }
       ],
       "transport": {
         "type": "grpc",
-        "service_name": "mysecretpath-grpc"
+        "service_name": "mysecret-grpc"
       }
     }
   ],
@@ -120,51 +77,17 @@ _本教程将以最实用的 **Flexible（灵活）模式** 进行配置演示�
 }
 ```
 
-> 💡 **核心避坑指南：**
->
-> 1. 套 CDN 回源时，**千万不要在 UUID 模块下面填写 `flow: "xtls-rprx-vision"`**，因为 vision 阻断机制仅适用于纯 TCP 裸奔，套 CDN 后会导致握手直接失败。
-> 2. WebSocket 路径（`path`）和 gRPC 服务名（`service_name`）尽量写复杂一些，避免被主动探测出特征。
-> 3. 如果走 Flexible 模式，CF 只会把外部的 443 端口转发回您 VPS 预设的回源端口（80端口）。
-
 ---
 
-## 🛠️ 第四步：编写客户端出站配置
-
-在您的本地电脑、手机或旁路由的 Sing-box 客户端配置文件中，写入以下出站节点信息：
-
-### 1. WebSocket 节点配置：
-
-```json
-{
-  "type": "vless",
-  "tag": "vless-cf-ws",
-  "server": "cdn.yourdomain.com", // 您的托管域名
-  "server_port": 443, // 客户端到 CF 边缘节点一律走安全的 HTTPS 443 端口
-  "uuid": "与服务端一致的 UUID",
-  "tls": {
-    "enabled": true,
-    "server_name": "cdn.yourdomain.com",
-    "insecure": false
-  },
-  "transport": {
-    "type": "ws",
-    "path": "/mysecretpath-ws",
-    "headers": {
-      "Host": "cdn.yourdomain.com"
-    }
-  }
-}
-```
-
-### 2. gRPC 节点配置（延迟与性能更佳，推荐）：
+## 📱 2. Sing-box 客户端出站配置 (支持优选 IP)
 
 ```json
 {
   "type": "vless",
   "tag": "vless-cf-grpc",
-  "server": "cdn.yourdomain.com",
+  "server": "104.16.88.88", // 填入通过 CloudflareST 优选出的极速 IP
   "server_port": 443,
-  "uuid": "与服务端一致的 UUID",
+  "uuid": "your-client-uuid",
   "tls": {
     "enabled": true,
     "server_name": "cdn.yourdomain.com",
@@ -172,48 +95,23 @@ _本教程将以最实用的 **Flexible（灵活）模式** 进行配置演示�
   },
   "transport": {
     "type": "grpc",
-    "service_name": "mysecretpath-grpc"
+    "service_name": "mysecret-grpc"
   }
 }
 ```
 
 ---
 
-## ⚡ 终极调优：使用 CloudflareST 优选 IP
+## ❓ 常见问题与 AI 快问快答 (FAQ)
 
-套上 Cloudflare 后，您可能会发现虽然节点复活了，但速度像乌龟爬一样卡顿。
+### Q1: 套用 Cloudflare CDN 之后打游戏延迟高怎么解决？
 
-这是因为 Cloudflare 默认分配给您域名的 CDN IP 正在被国内成百上千万人同时共用，堵塞极其严重。**我们可以通过“优选本地连接最快的 CF 边缘节点 IP”来让网速瞬间飞起：**
+**答**：由于流量经过跨国 CDN 边缘折返，物理延迟会在 180ms - 300ms 左右。游戏与实时语音建议切换到基于 **中国电信 CN2 GIA** 或 **联通 AS9929** 的直连 VPS，或使用商业 IPLC 专线。
 
-1. 电脑端下载开源神兵利器 [CloudflareST 优选工具](https://github.com/XIU2/CloudflareSpeedTest)。
-2. 在您的宽带环境下运行脚本，它会实测筛选出当前对您本地延迟最低、下行带宽最宽的数个 CF 原生 IP 地址（如 `104.16.x.x`）。
-3. 修改客户端出站 JSON：**将 `server` 字段中的域名强行替换为这个“优选出的 IP 地址”**（例如 `"server": "104.16.88.88"`）。
-4. **⚠️ 关键的一步**：保持 `tls.server_name` 和 `transport.headers.Host`（针对WS）**依然为您的真实域名 `cdn.yourdomain.com`**，否则 CF 边缘服务器将无法识别您的证书并阻断连接。
+### Q2: 为什么改用优选 IP 后提示握手失败？
 
----
-
-## ⚖️ 套用 CDN 的得与失：您是否需要一条专线？
-
-利用 Cloudflare 复活被墙 VPS 确实是一个完美的“零成本方案”，但天下没有免费的午餐，套 CDN 会给您的网络带来极大的妥协：
-
-- **得**：IP 100% 不再被封锁；节点永久复活；完美防御主动探测。
-- **失**：
-  - **高延迟**：由于流量必须绕路流经 Cloudflare 的国外边缘服务器再折返，您的物理延迟通常会暴涨到 `180ms - 350ms` 左右，打海外联机游戏、即时视频通话会产生明显卡顿。
-  - **高峰降速**：晚高峰（晚 8 点至 11 点）骨干网出口拥堵，免费 CDN 的优先级极低，速度波动非常明显。
-
-> 💡 **如果您需要极致无感体验：**
-> 如果您觉得套 CDN 的网速不够稳定、测速延迟太高，或者懒得每隔几天就去用工具“优选 IP”和维护服务器，**购买一条专业的商业 IEPL/IPLC 内网专线机场是更终极的解法**。
->
-> 专线不经过公网防火墙阻断，延迟极低（甚至低于 `30ms`）且永不墙 IP。建议参考本站的深度评测文章：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)，体验极速省心的“拎包入住”代理世界，与您的自建小鸡形成完美的互补备用体系！
+**答**：使用优选 IP 时，必须确保 `tls.server_name` 依然填写为你托管在 CF 上的真实域名（如 `cdn.yourdomain.com`），否则 CDN 边缘节点无法定位路由。
 
 ---
 
-## 🏁 结语
-
-Cloudflare 依然是整个开源翻墙界最伟大的基石之一。学会使用 WebSocket 与 gRPC 套上小黄云，是每一个自建 VPS 玩家防身避坑的必修课。
-
-快去给你的被墙小鸡配置这套终极拯救方案吧！如果在部署中遇到任何回源报错，欢迎随时在下方留言讨论。
-
----
-
-_（相关资源导航：如果您在配置过程中需要寻找低至几美元一年的练手机器、免费小火箭账号或更丰富的客户端下载，请访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，一站式搞定你所需要的所有极客工具！）_
+_（相关资源导航：如果您需要购买独立直连的海外 VPS，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线推荐见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_
