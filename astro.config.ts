@@ -16,6 +16,7 @@ import { SITE } from "./src/config";
 // https://astro.build/config
 export default defineConfig({
   site: SITE.website,
+  trailingSlash: "always",
   integrations: [
     mdx({
       extendMarkdownConfig: true,

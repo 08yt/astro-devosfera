@@ -16,13 +16,14 @@ const currentPath =
 
 const isActive = (path: string) => {
   const currentPathArray = currentPath.split("/").filter(p => p.trim());
-  const pathArray = path.split("/").filter(p => p.trim());
+  const cleanPath = path.endsWith("/") && path !== "/" ? path.slice(0, -1) : path;
+  const pathArray = cleanPath.split("/").filter(p => p.trim());
 
   if (pathArray.length > 1) {
-    return currentPath === path || decodeURIComponent(currentPath) === path;
+    return currentPath === cleanPath || decodeURIComponent(currentPath) === cleanPath;
   }
 
-  return currentPath === path || currentPathArray[0] === pathArray[0];
+  return currentPath === cleanPath || currentPathArray[0] === pathArray[0];
 };
 ---
 
@@ -75,57 +76,57 @@ const isActive = (path: string) => {
         <ul class="hidden sm:flex sm:flex-row sm:items-center sm:gap-1">
           <li>
             <a
-              href="/posts"
-              class:list={["nav-link", { "nav-active": isActive("/posts") }]}
+              href="/posts/"
+              class:list={["nav-link", { "nav-active": isActive("/posts/") }]}
               >全部教程</a
             >
           </li>
           <li>
             <a
-              href="/tags/basics"
-              class:list={["nav-link", { "nav-active": isActive("/tags/basics") }]}
+              href="/tags/basics/"
+              class:list={["nav-link", { "nav-active": isActive("/tags/basics/") }]}
               >基础入门</a
             >
           </li>
           <li>
             <a
-              href="/tags/server"
-              class:list={["nav-link", { "nav-active": isActive("/tags/server") }]}
+              href="/tags/server/"
+              class:list={["nav-link", { "nav-active": isActive("/tags/server/") }]}
               >服务器搭建</a
             >
           </li>
           <li>
             <a
-              href="/tags/advanced"
-              class:list={["nav-link", { "nav-active": isActive("/tags/advanced") }]}
+              href="/tags/advanced/"
+              class:list={["nav-link", { "nav-active": isActive("/tags/advanced/") }]}
               >规则进阶</a
             >
           </li>
           <li>
             <a
-              href="/tags"
+              href="/tags/"
               class:list={["nav-link", { "nav-active": currentPath === "/tags" }]}
               >更多</a
             >
           </li>
           <li>
             <a
-              href="/friends"
+              href="/friends/"
               class:list={["nav-link", { "nav-active": currentPath === "/friends" }]}
               >友链</a
             >
           </li>
           <li>
             <a
-              href="/about"
-              class:list={["nav-link", { "nav-active": isActive("/about") }]}
+              href="/about/"
+              class:list={["nav-link", { "nav-active": isActive("/about/") }]}
               >关于</a
             >
           </li>
           <li class="flex items-center">
             <a
-              href="/search"
-              class:list={["nav-link", { "nav-active": isActive("/search") }]}
+              href="/search/"
+              class:list={["nav-link", { "nav-active": isActive("/search/") }]}
               title="前往搜索">搜索</a
             >
           </li>
@@ -133,10 +134,10 @@ const isActive = (path: string) => {
             SITE.showArchives && (
               <li>
                 <LinkButton
-                  href="/archives"
+                  href="/archives/"
                   class:list={[
                     "nav-link",
-                    { "nav-active": isActive("/archives") },
+                    { "nav-active": isActive("/archives/") },
                   ]}
                   title="归档"
                   aria-label="archives"
@@ -151,10 +152,10 @@ const isActive = (path: string) => {
             SITE.showGalleries && (
               <li>
                 <LinkButton
-                  href="/galleries"
+                  href="/galleries/"
                   class:list={[
                     "nav-link",
-                    { "nav-active": isActive("/galleries") },
+                    { "nav-active": isActive("/galleries/") },
                   ]}
                   title="图集"
                   aria-label="galleries"
@@ -215,39 +216,39 @@ const isActive = (path: string) => {
         <div class="mobile-menu-inner">
           <nav class="mobile-nav-links">
             <a
-              href="/posts"
-              class:list={["mobile-nav-link", { active: isActive("/posts") }]}
+              href="/posts/"
+              class:list={["mobile-nav-link", { active: isActive("/posts/") }]}
               style="--i:0"
             >
               <span class="mobile-nav-indicator"></span>
               <span>全部教程</span>
             </a>
             <a
-              href="/tags/basics"
-              class:list={["mobile-nav-link", { active: isActive("/tags/basics") }]}
+              href="/tags/basics/"
+              class:list={["mobile-nav-link", { active: isActive("/tags/basics/") }]}
               style="--i:1"
             >
               <span class="mobile-nav-indicator"></span>
               <span>基础入门</span>
             </a>
             <a
-              href="/tags/server"
-              class:list={["mobile-nav-link", { active: isActive("/tags/server") }]}
+              href="/tags/server/"
+              class:list={["mobile-nav-link", { active: isActive("/tags/server/") }]}
               style="--i:2"
             >
               <span class="mobile-nav-indicator"></span>
               <span>服务器搭建</span>
             </a>
             <a
-              href="/tags/advanced"
-              class:list={["mobile-nav-link", { active: isActive("/tags/advanced") }]}
+              href="/tags/advanced/"
+              class:list={["mobile-nav-link", { active: isActive("/tags/advanced/") }]}
               style="--i:3"
             >
               <span class="mobile-nav-indicator"></span>
               <span>规则进阶</span>
             </a>
             <a
-              href="/tags"
+              href="/tags/"
               class:list={["mobile-nav-link", { active: currentPath === "/tags" }]}
               style="--i:4"
             >
@@ -255,7 +256,7 @@ const isActive = (path: string) => {
               <span>更多标签</span>
             </a>
             <a
-              href="/friends"
+              href="/friends/"
               class:list={["mobile-nav-link", { active: currentPath === "/friends" }]}
               style="--i:5"
             >
@@ -263,8 +264,8 @@ const isActive = (path: string) => {
               <span>友情链接</span>
             </a>
             <a
-              href="/about"
-              class:list={["mobile-nav-link", { active: isActive("/about") }]}
+              href="/about/"
+              class:list={["mobile-nav-link", { active: isActive("/about/") }]}
               style="--i:6"
             >
               <span class="mobile-nav-indicator"></span>
@@ -273,10 +274,10 @@ const isActive = (path: string) => {
             {
               SITE.showArchives && (
                 <a
-                  href="/archives"
+                  href="/archives/"
                   class:list={[
                     "mobile-nav-link",
-                    { active: isActive("/archives") },
+                    { active: isActive("/archives/") },
                   ]}
                   style="--i:3"
                 >
@@ -288,10 +289,10 @@ const isActive = (path: string) => {
             {
               SITE.showGalleries && (
                 <a
-                  href="/galleries"
+                  href="/galleries/"
                   class:list={[
                     "mobile-nav-link",
-                    { active: isActive("/galleries") },
+                    { active: isActive("/galleries/") },
                   ]}
                   style="--i:4"
                 >
