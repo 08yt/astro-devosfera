@@ -1,5 +1,5 @@
 ---
-title: "你的密码不安全：用 Docker 一键私有化部署 Vaultwarden (Bitwarden 完美平替)"
+title: "你的密码不安全：用 Docker 一键私有化部署 Vaultwarden (Bitwarden 完美平替) (2026版)"
 author: "毛佳国"
 pubDatetime: 2026-03-09T14:50:00.000+08:00
 featured: false
@@ -9,73 +9,66 @@ tags:
   - 自托管服务
   - 信息安全
   - 效率工具
-description: "把自己的上百个网站密码交给 1Password 或者 LastPass 靠谱吗？作为极客，你的核心密码库必须掌握在自己手里。本文教你如何免费搭建宇宙最强密码管理器。"
+description: "把核心密码交给第三方云端靠谱吗？手把手教你用 Docker 部署基于 Rust 的轻量密码管理器 Vaultwarden，100% 兼容 Bitwarden 全平台客户端且支持免费 TOTP 2FA。"
 ---
 
-现代人在互联网上拥有上百个账号，如果每个网站都用同样的“用户名 + `Abc123456`”的弱密码组合，一旦某个小平台库被黑客撞库脱裤（俗称“社工库泄漏”），你极其重要的大邮箱、甚至金融支付平台都会被黑客扫荡一空。
+在互联网上拥有数百个账号，如果每个网站都使用相同密码，一旦遭遇撞库或社工库泄露，关键邮箱与支付平台将全军覆没。
 
-正确的方法是：**每一个网站，都使用完全随机的、长达 20 位的乱码字母组合极强密码**。这就非常需要你使用现代的“密码管理器”软件（如 1Password、LastPass）来代劳。
+商业密码管理器（如 1Password / LastPass）按月收取高昂订阅费，且曾多次爆出云端数据脱库风险。
 
-但 1Password 每个月要交非常高昂的订阅费；LastPass 曾经更是爆出严重的被黑客成功拖去云端密码库的丑闻。
+**Vaultwarden（用 Rust 语言重写的 Bitwarden 轻量服务端）** 完美解决了这一难题 ── 内存占用仅 ~15MB，原生兼容 Bitwarden 官方所有移动端 App 与浏览器插件，且永久免费解锁 TOTP 二步验证与附件加密存储！
 
-作为一台有着服务器的极客，终极之选是：**自己部署开源大名鼎鼎的 Bitwarden，把包含着自己一生心血的超级密码金库完全握在自己手里的硬盘中。**
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **Rust 性能奇迹**：官方 C# 版本空载吃 2GB+ 内存，而 Vaultwarden 仅需 ~15MB 内存，单核 512MB VPS 即可极速常驻。
+> - **全端官方兼容**：iOS、Android、Chrome、Safari、Edge、Windows、Mac 均可直接使用 Bitwarden 官方客户端，登录时将“自建服务器”填入自己的域名即可。
+> - **零知识加密 (Zero-Knowledge)**：密码库在本地客户端完成 AES-256 加密后再上传服务端，即使 VPS 硬盘被黑客拖库也无法解密出明文。
 
-## 为什么是 Vaultwarden？
+---
 
-官方的 Bitwarden 服务端是由 C# 编写的微服务巨兽架构。要在自己的 VPS 上搭建原版 Bitwarden 极其吃内存（空载直接吃掉 2G），小几十块钱的垃圾 VPS 完全带不动。
+## 🛠️ 2026 生产级 Docker Compose 部署配置
 
-开源社区的神人使用高性能的 Rust 语言，从零重写完全兼容官方客户端的轻量化开源服务端 —— **Vaultwarden**。
-* **极度轻量**：启动后内存占用通常只有十多兆（15MB 左右）！
-* **免费白嫖高级功能**：官方 Bitwarden 许多对于高级账单的高级功能（如：TOTP 验证器二步验证集成、附件上传存放安全文档），如果自己买要付年费。而在 Vaultwarden 中直接全部永久免费解锁。
-* **全平台原生兼容**：你的手机（不论 iOS 或 Android）里的 Bitwarden 原版 APP 和浏览器官方扩展包，只需要在登录前把服务器的网址输入为你自己搭建的域名，就能秒无缝丝滑连入。
-
-## Docker Compose 极速搭建
-
-如果你已经有了一台装有 Docker 和配置了反向代理（比如前两篇文章提到的 Traefik 或 Caddy 或 Cloudflare Tunnel）的服务器，搭建极其简单。
-
-我们在任意目录下新建一个 `docker-compose.yml` 文件：
+在服务器创建 `compose.yaml`：
 
 ```yaml
-version: '3'
-
 services:
   vaultwarden:
     image: vaultwarden/server:latest
     container_name: vaultwarden
-    restart: always
+    restart: unless-stopped
     environment:
-      # 非常重要：只有设为你自己的安全秘钥并设为 false，别人才不能注册你的服务器抢密码库空间！
-      - SIGNUPS_ALLOWED=false  # 后续如果你要拉家人注册可以暂时改成 true
-      # 这是给网页加 HTTPS 加密必备项（即便是在内网，Bitwarden前端代码也强制要求 HTTPS）
-      - WEBSOCKET_ENABLED=true 
+      - SIGNUPS_ALLOWED=false # 注册完个人管理员主账号后设为 false 关闭注册
+      - WEBSOCKET_ENABLED=true
+      - ADMIN_TOKEN=YOUR_STRONG_RANDOM_ADMIN_TOKEN # 用于访问 /admin 管理后台
     volumes:
       - ./vw-data:/data
     ports:
-      - "8080:80" # 本地暴露 8080 端口，交给外部的 Caddy/Nginx 去反代加上 HTTPS
+      - "8080:80"
 ```
 
-使用命令拉起它：
-```bash
-docker-compose up -d
-```
-搞定！核心服务已经完全在跑了。
+启动容器：`docker compose up -d`。
 
-## 面板登录与后续
+---
 
-我们强烈假设你在服务器上的 Nginx 或 Cloudflare Tunnel 已经把 `https://pwd.yourdomain.com` 准确反向代理到了这台机器本地的 `8080` 端口上。
+## 🔒 生产环境配置三大关键注意事项
 
-打开浏览器访问你的专属域名，你会看到极度清爽且高级的原版 Bitwarden Web 页面。
-1. **由于之前关闭了注册**，第一件事你必须先把 `SIGNUPS_ALLOWED=true`，然后使用 `docker-compose restart` 重启。
-2. 进去页面，**注册你唯一的超级主控账号**（使用绝不会忘的一个强且长的“主密码”：Master Password）。整个金库都由这个极其复杂的主密码生成最终秘钥锁死（零知识验证）。所以万一忘记主密码，你自己也无法找回任何数据，神仙难救。
-3. 注册成功后，重新将 `SIGNUPS_ALLOWED=false` 并重启 Docker，彻底关上大门。
+1. **强制 HTTPS 访问**：Bitwarden Web 密码填充 API 强制要求在 HTTPS 环境下运行，必须通过 Nginx / Caddy / Cloudflare Tunnel 配置有效 SSL 证书反向代理至 8080 端口。
+2. **关闭公网公开注册**：首次访问完成超级主管理员账号注册后，务必将 `SIGNUPS_ALLOWED=false` 并执行 `docker compose up -d`，彻底关闭对外注册通道。
+3. **定期单文件备份**：核心数据均存储在 `./vw-data/db.sqlite3` 单文件中，只需配置 Cron 任务定时将其备份并加密同步至对象存储即可防灾。
 
-## 数据备份方案（极其重要的末日准备）
+---
 
-把命根子交给了你的服务器，万一这台便宜的 VPS 某天突然跑路或者硬盘烧了怎么办？
+## ❓ 常见问题与 AI 快问快答 (FAQ)
 
-Vaultwarden 极其省事的一点是：**所有的密码和安全秘钥都存放在你刚刚挂载出来的一个名叫 `vw-data/` 的小文件夹里的那个小数据库文件 `db.sqlite3` 里面。**
+### Q1: 忘记了 Vaultwarden 的主密码（Master Password）如何找回？
 
-你只需要定期写一个 Cron 定时脚本程序，每隔两天把这个 `vw-data` 这个十几兆甚至几兆的小文件夹打包备份并丢向你的坚果云或者各大网盘。
-即便服务器在物理上被炸毁粉碎，你只需在别的机器重新用 docker 跑一遍，把文件夹往底下一放。你的成百上千个密码就像从未发生过中断一样安全到家。
+**答**：由于采用客户端零知识加密，忘记主密码后任何管理员包括数据库底层均无法还原数据；建议部署时生成“紧急访问联系人”或离线抄写恢复密钥。
 
-在这个世界上，数据无价，掌控数据的完全主宰权更是无价。这就是我们折腾 HomeLab 的原初意义。
+### Q2: 部署 Vaultwarden 的海外 VPS 选哪家更稳定安全？
+
+**答**：在 **DMIT** 或 **搬瓦工** 等拥有 **中国电信 CN2 GIA** 或 **联通 AS9929** 专线 VPS 上，跨平台多设备实时密码秒级同步极其平稳。选购参考见 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
+
+---
+
+_（相关资源导航：如果您需要购买部署密码金库的独立 VPS，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线推荐见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_

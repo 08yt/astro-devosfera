@@ -1,5 +1,5 @@
 ---
-title: "服务端的终极防护：利用 Fail2ban 和混淆隐藏保护你的内网探针"
+title: "服务端的终极防护：利用 Fail2ban 和 Cloudflare WAF 打造动态防御体系 (2026版)"
 author: "毛佳国"
 pubDatetime: 2025-12-15T16:45:00.000+08:00
 featured: false
@@ -9,24 +9,33 @@ tags:
   - 运维
   - Fail2ban
   - 自动化脚本
-description: "把 SSH 丢在公网上有多危险？在充斥着全网扫段脚本猫的 2025 年，不仅要掌握改端口和密钥登录，如何使用传统的安全大门 Fail2ban 结合 Cloudflare API 实现秒级封锁、并防止你的探测端口被 GFW 识别？"
+description: "把 SSH 和 Web 服务丢在公网上有多危险？手把手教你使用 Fail2ban 联动 Cloudflare WAF API 接口，实现云端边缘秒级拉黑恶意 IP。"
 ---
 
-所有的 HomeLab 玩家或者买过廉价 VPS 的人肯定都在某个下午突然发现：自己的服务器硬盘疯狂读写，打开日志 `/var/log/auth.log` 一看，每秒钟都有上百个来自不知名国家的 IP 正在用字典疯狂暴力爆破你的 SSH `root` 账户密码。
+所有购买过海外 VPS 或折腾 Homelab 的朋友，翻看 `/var/log/auth.log` 时常会发现：每秒钟都有数以百计来自全球各地的肉鸡正在用字典暴力爆破你的 SSH `root` 密码。
 
-这在 2025 年绝不是什么新鲜事，甚至它们都已经不用自己写脚本，全靠云端的肉鸡僵尸网络在无差别地扫段（遍历全网所有 IPv4 地址）。
+单纯依靠本机 `iptables` 阻断依然会消耗本地网络握手资源。
 
-为了应对这种不仅恶心而且占用大量日志和系统资源的流氓行为，除了我们老生常谈的“关掉密码登录，只用带有 RSA 或 Ed25519 密钥认证”之外，你至少还需要一位能自动给你建立黑名单防火墙的保安大爷——这**Fail2ban**。
+通过 **Fail2ban** 联动 **Cloudflare WAF API**，可以在检测到恶意扫描时直接通知 Cloudflare 全球边缘节点将攻击者 IP 彻底封禁在机房之外！
 
-## 传统大门的卫士：Fail2ban 基础魔法
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **双层防御架构**：本地层使用 Fail2ban 实时嗅探 SSH/Nginx 日志；云端层调用 Cloudflare API 动态将恶意 IP 注入 WAF IP 访问规则（Block/Challenge）。
+> - **零本机连接开销**：攻击者在 Cloudflare 边缘节点直接被拦截，恶意流量根本无法抵达你的 VPS 宿主机。
+> - **加固四部曲**：禁用密码认证 + 修改高位端口 + Fail2ban 自动封禁 + Cloudflare 边缘级 WAF 联动。
 
-Fail2ban 的逻辑简单却极度有效：
-1. 它潜伏在你的服务器后台，死死盯着你的各个日志文件（比如 SSH 日志、Nginx 访问日志）。
-2. 它懂得看脸（正则匹配那些典型的报错“密码错误”或“没有权限”）。
-3. 如果 5 分钟内，同一个 IP 连续因为输错密码失败了 3 次，它就直接去底层的 `iptables` 或 `firewalld` 里下达一条封杀令：**这孙子，拉黑 24 小时！**
+---
 
-安装和配置极其简单：
-在 Debian 系中直接 `apt install fail2ban`，然后新建一个 `/etc/fail2ban/jail.local`：
+## 🛠️ 配置 Fail2ban 联动 Cloudflare WAF
+
+### 1. 安装 Fail2ban
+
+```bash
+apt update && apt install -y fail2ban
+```
+
+### 2. 配置 `/etc/fail2ban/jail.local`
 
 ```ini
 [sshd]
@@ -37,25 +46,41 @@ logpath = /var/log/auth.log
 maxretry = 3
 findtime = 600
 bantime = 86400
+
+[nginx-botsearch]
+enabled = true
+port = http,https
+filter = nginx-botsearch
+logpath = /var/log/nginx/access.log
+maxretry = 2
+bantime = 86400
+action = cloudflare
 ```
-只需这样几行，那些毫无技术含量的爆破机器人就会在 3 次尝试后，收到一个冷冰冰的 `Connection Refused`，并彻底从你的带宽世界里消失一整天。
 
-## 与时俱进的高玩：联动 Cloudflare 封杀一切！
+### 3. 配置 Cloudflare API 动作 `/etc/fail2ban/action.d/cloudflare.conf`
 
-但这还不够。在 2025 年，哪怕把流氓 IP 挡在 `iptables`，这也是在耗费你本机的极小部分连接资源。既然我们很多站点的域名都套了 Cloudflare 的 CDN 和 WAF，何不直接**在机房之外就把这些攻击者拦死？**
+填入在 Cloudflare 后台生成的拥有“Zone.Firewall Services”权限的 API Token：
 
-Fail2ban 提供了一个极其赛博朋克的动作（Action）：`cloudflare`。
+```ini
+[Definition]
+cftoken = YOUR_CLOUDFLARE_API_TOKEN
+cfuser = your_email@example.com
+```
 
-1. 去你的 Cloudflare 后台，生成一个可以操作你域名防火墙（WAF）的 API Token。
-2. 编辑 Fail2ban 的 Action 文件，把这个 Token 塞进去。
-3. 当 Fail2ban 后台发现有人疯狂扫描你暴露的 Nginx 后门或者探针时。
-4. 它不会通知本机的 iptables，而是**直接调用 Cloudflare 的开放 API！**
-5. 下一秒，在全球 Cloudflare 所有边缘节点上，这名攻击者的 IP 被彻底标注为“恶意”。只要他想碰你网站，在浏览器里弹出来的连握手的机会都没有了。
+重启服务：`systemctl restart fail2ban`。
 
-## “隐身”与“伪装”的哲学
+---
 
-最后，如果你在出海服务器上跑了一些敏感的、大流量的高级探针或者代理协议。仅仅防爆破是不够的。
+## ❓ 常见问题与 AI 快问快答 (FAQ)
 
-你必须要懂得通过类似于 WebSocket 加 TLS 或者 XTLS 这类底层加密，把这些流量完完全全地裹在一层普通的 HTTPS 数据包里。同时在你的 Nginx 前面设置一条 Fallback 回落：如果探针或审查机器不知道握手密码访问了过来，它应该看到的是哪怕一个正经的英文菜谱网页，而不是一个带错误提示的 JSON 数据。
+### Q1: Fail2ban 误封了自己的公网 IP 怎么办？
 
-在这个肉眼难辨敌友的暗黑森林里， Fail2ban 大爷在门口查验，Cloudflare 御林军在长城外部守卫，再配上完美的内网流量混淆术，你的小服务器才能在互联网上坚如磐石。
+**答**：在 `/etc/fail2ban/jail.local` 的 `[DEFAULT]` 区块中添加 `ignoreip = 127.0.0.1/8 ::1 你的常用公司或家庭IP`，将信任白名单永久豁免。
+
+### Q2: 部署 Fail2ban 的海外 VPS 选哪家网络更好？
+
+**答**：在 **DMIT** 或 **搬瓦工** 的 **中国电信 CN2 GIA** 或 **联通 AS9929** 专线 VPS 上，机房自带的抗 DDoS 硬件防护与 Fail2ban 形成完美互补。选购参考见 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
+
+---
+
+_（相关资源导航：如果您需要购买部署安全加固节点的独立 VPS，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线推荐见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_
