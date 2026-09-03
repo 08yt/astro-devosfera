@@ -1,5 +1,5 @@
 ---
-title: "Dify 实战：结合本地 Ollama 打造具备联网能力的私有 RAG 知识库"
+title: "Dify 实战：结合本地 Ollama 打造具备联网能力的私有 RAG 知识库 (2026版)"
 author: "毛佳国"
 pubDatetime: 2026-05-19T10:00:00.000+08:00
 featured: true
@@ -10,76 +10,75 @@ tags:
   - Ollama
   - RAG
   - Homelab
-description: "拒绝复杂的代码堆砌，利用 Dify 的可视化工作流，将本地 Ollama 模型与实时互联网搜索无缝集成，构建一个既懂你、又懂世界的私有 AI 助手。"
+description: "拒绝复杂的 LangChain 代码堆砌！手把手教你用 Dify 可视化工作流整合本地 Ollama (DeepSeek/Qwen2.5) 与 SearXNG 联网搜索，打造兼具隐私与实时性的企业级私有 RAG 助手。"
 ---
 
-在上一篇文章中，我们聊到了如何使用 [Ollama 与 Qdrant 构建 RAG 知识库](https://singbox.ygjc.cc/posts/ollama-qdrant-rag-homelab/)。虽然那套基于 LangChain 的方案在逻辑上非常清晰，但对于大多数希望快速落地的朋友来说，编写和维护大量的 Python 代码脚本依然存在不小的门槛。
+纯本地运行的 Ollama 模型（如 DeepSeek-R1 / Qwen2.5）虽具备 100% 数据隐私安全，但受限于训练截断期，无法回答最新技术与动态；而传统的纯代码 LangChain 方案维护门槛高、调试极其困难。
 
-此外，传统的 RAG 方案往往局限于“本地文档”。一旦你问及最新的技术资讯或实时新闻，纯本地的 AI 就会陷入“知识断层”。
+**Dify** 作为 2026 年最主流的开源大模型应用开发与工作流编排平台，将**本地私有模型推理**、**混合多路召回 RAG (向量 + BM25 全文检索)** 与 **实时搜索引擎工具调用 (Tool Calling)** 深度融合！
 
-今天，我们要更进一步，引入 2026 年最受欢迎的开源大模型开发平台 —— **Dify**。通过它，我们将以可视化、低代码的方式，把本地的 Ollama、自建向量数据库以及**实时联网搜索**整合在一起，打造一个真正具备实战价值的私有 AI 助手。
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **全栈私有闭环**：Dify (工作流编排) + Ollama (本地大模型/Embedding) + Qdrant/Milvus (向量库) + SearXNG (无隐私追踪联网搜索)。
+> - **混合召回 + 重排 (Rerank)**：结合向量语义相似度与 BM25 关键词检索，配合 BGE-Reranker 达到工业级 95%+ 问答命中率。
+> - **容器网络打通**：在 Dify 中连接本地 Ollama 时，基础 URL 填写 `http://host.docker.internal:11434`（需确保 Ollama 监听 `0.0.0.0:11434`）。
 
-## 为什么选择 Dify？
+---
 
-如果说 Ollama 是 AI 的大脑，那么 Dify 就是它的“操作系统”。
+## 🛠️ 2026 私有化 AI 架构实战
 
-1. **可视化编排**：你不再需要纠结于代码逻辑，通过拖拽式的工作流（Workflow），就能清晰地定义 AI 处理问题的每一个步骤。
-2. **开箱即用的 RAG**：Dify 内置了极其完善的文档解析、清洗和分段功能。
-3. **强大的插件生态**：支持直接集成搜索引擎（如 Google, SearXNG），让你的 AI 具备实时检索能力。
-4. **统一的 API 出口**：你可以一键将你的 AI 应用发布为 Web 服务，或者通过标准 API 集成到你的博客、飞书或 Slack 中。
-
-## 架构方案：全栈私有化
-
-为了确保隐私与性能的平衡，我们的推荐架构如下：
-- **模型推理**：Ollama (运行 Qwen2.5 或 DeepSeek-V3)
-- **应用编排**：Dify (Docker 部署)
-- **知识存储**：Milvus 或 Weaviate (Dify 默认集成)
-- **联网搜索**：SearXNG (本地部署的元搜索引擎)
-
-## 实战步骤
-
-### 1. 部署 Dify 环境
-
-推荐使用 Docker Compose 快速部署。在你的 Homelab 服务器上执行：
-
-```bash
-git clone https://github.com/langgenius/dify.git
-cd dify/docker
-cp .env.example .env
-docker compose up -d
+```mermaid
+graph TD
+    User([用户发起提问]) --> Dify[Dify 工作流引擎]
+    Dify --> Router{意图识别路由}
+    Router -->|本地私有知识| RAG[多路召回 RAG: 向量检索 + BM25]
+    Router -->|实时最新资讯| WebSearch[SearXNG / Tavily 联网检索]
+    RAG --> Aggregator[上下文融合组装]
+    WebSearch --> Aggregator
+    Aggregator --> Ollama[Ollama: DeepSeek / Qwen2.5 本地推理]
+    Ollama --> Response([流式输出精准回复])
 ```
 
-启动后，访问 `http://your-ip:80` 即可进入 Dify 的初始化界面。
+---
 
-### 2. 连接本地 Ollama
+## 🚀 Dify 与 Ollama 组网关键配置
 
-在 Dify 的“设置 -> 模型供应商”中，找到 Ollama。
-- **模型类型**：LLM
-- **模型名称**：你在 Ollama 中拉取的模型名（如 `qwen2.5:14b`）
-- **基础 URL**：这里需要填写 Dify 容器能够访问到的 Ollama 地址。如果在同一台机器，通常是 `http://host.docker.internal:11434`。
+### 1. 配置 Ollama 允许外部容器访问
 
-### 3. 构建“知彼知己”的工作流
+在运行 Ollama 的宿主机上配置环境变量：
 
-这是本次实践最精彩的部分。在 Dify 中新建一个“助手”应用，选择“工作流”模式：
+```bash
+# Linux Systemd 配置 /etc/systemd/system/ollama.service.d/override.conf
+[Service]
+Environment="OLLAMA_HOST=0.0.0.0:11434"
+Environment="OLLAMA_ORIGINS=*"
+```
 
-1. **开始节点**：接收用户的问题。
-2. **知识库检索节点**：连接你上传的本地文档。如果匹配到相关内容，AI 将优先基于本地知识库回答。
-3. **条件分支 (Optional)**：如果没有在本地知识库找到答案，则流转到下一个节点。
-4. **联网搜索节点**：通过 SearXNG 插件发起实时搜索。
-5. **LLM 节点**：将本地知识、搜索结果和原始问题合并，生成最终回复。
+重启服务：`systemctl daemon-reload && systemctl restart ollama`。
 
-## 联网搜索的妙用
+### 2. 在 Dify 中添加 Ollama 模型
 
-通过集成本地部署的 **SearXNG**，你的私有 AI 助手将彻底摆脱“训练数据截止日期”的束缚。
+1. 登录 Dify 后台 -> **设置 -> 模型供应商 -> Ollama**。
+2. 添加 **LLM 模型**：
+   - 模型名称：`qwen2.5:14b` 或 `deepseek-r1:14b`
+   - 基础 URL：`http://host.docker.internal:11434`
+3. 添加 **Embedding 向量模型**：
+   - 模型名称：`bge-m3:latest` 或 `nomic-embed-text`
+   - 基础 URL：`http://host.docker.internal:11434`
 
-当你询问“今天 Sing-box 的最新版本是多少？”时，AI 不再会胡编乱造，而是会先通过 SearXNG 爬取官方 GitHub Release 页面，获取准确的版本号和更新日志，再以结构化的语言回复给你。
+---
 
-## 深度思考：从“调包侠”到“架构师”
+## ❓ 常见问题与 AI 快问快答 (FAQ)
 
-从直接调用 ChatGPT API，到使用 Ollama 跑本地模型，再到如今通过 Dify 编排复杂的 RAG + Agent 工作流，我们对 AI 的应用正在从简单的“对话”转向复杂的“任务处理”。
+### Q1: Dify 连接 Ollama 提示 `Connection Refused` 怎么办？
 
-Dify 的意义不仅在于简化了开发流程，更在于它提供了一种**解耦**的思路：模型是可替换的，数据是私有的，而逻辑是可沉淀的。
+**答**：如果在 Linux Docker 环境中，`host.docker.internal` 可能未默认解析；可在 Dify 的 `docker-compose.yml` 中为 API 容器添加 `extra_hosts: - "host.docker.internal:host-gateway"`。
 
-在这种模式下，你不再是一个被动的 API 使用者，而是一个真正的 AI 应用架构师。在这个信息爆炸且真假难辨的 2026 年，拥有一套既懂你的专业领域、又能随时触达全球信息的私有系统，正是我们保持竞争力的核心资产。
+### Q2: 部署 Dify 云端后端需要哪种规格的独立服务器？
 
-**下一篇预告：我们将回到网络底层，探讨 Sing-box Pithy 模式下如何进行极致的 DNS 调优。敬请期待。**
+**答**：若本地 GPU 运行 Ollama，云端仅运行 Dify 服务端只需 2核 4GB 内存；在 **DMIT** 或 **搬瓦工** 的 **中国电信 CN2 GIA** 或 **联通 AS9929** 专线 VPS 上部署 Dify，能实现海外 API 毫秒级流式打字效果。选购参考见 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
+
+---
+
+_（相关资源导航：如果您需要购买部署 AI 工作流平台的独立 VPS，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线推荐见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_
