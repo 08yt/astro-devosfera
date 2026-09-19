@@ -1,5 +1,5 @@
 ---
-title: "HomeLab 折腾日记：Proxmox VE (PVE) 虚拟化底层底层环境从零搭建"
+title: "HomeLab 折腾日记：Proxmox VE (PVE) 虚拟化私有云基座从零搭建指南 (2026版)"
 author: "毛佳国"
 pubDatetime: 2026-03-09T14:30:00.000+08:00
 featured: false
@@ -9,59 +9,71 @@ tags:
   - PVE
   - 虚拟化
   - 硬件基础
-description: "买了一台性能过剩的零刻小主机并想榨干它的性能？抛弃 Windows，手把手教你安装 PVE，打造专属的家庭服务器与软路由核心底层系统。"
+description: "买了一台迷你小主机（Intel N100 / AMD 锐龙）想榨干性能？手把手教你安装部署 Type-1 裸金属虚拟化系统 Proxmox VE (PVE 8)，硬件直通、LXC 轻量容器与家庭私有云部署实战。"
 ---
 
-折腾完各种网络架构和代理服务后，极客们的终极归宿就是：**在家里放一台永远不关机的小主机，打造属于自己的 HomeLab（家庭实验室）**。
+买来 Intel N100、J4125 或 AMD 锐龙迷你小主机后，很多朋友直接安装了 Windows。
 
-很多人买来 N100 或更高性能的迷您主机后，默认就装个 Windows 跑着。但 Windows 的资源占用不仅极大，而且一旦系统崩溃甚至仅仅因为自动更新重启，你部署在里面的文件存储（NAS）、下载器、甚至是 Sing-box 透明网关，全盘跟着宕机瘫痪！
+然而 Windows 系统不仅资源开销巨大，而且偶发的强制更新重启常导致部署在后台的 NAS 存储、下载机或 Sing-box 透明网关瞬间瘫痪。若物理机直装单一 Linux，一旦配置失误便不得不接显示器重装，代价沉重。
 
-真正的极客玩法是：**安装一台基于 Linux 的 Hypervisor（底层硬件全解绑的虚拟机监视管理器）**。在这个领域，免费开源的 **Proxmox VE (简称 PVE)**，是无懈可击的首选王牌。
+**Proxmox VE (PVE)** 作为基于 Debian Linux 的开源 Type-1（裸金属）Hypervisor 虚拟化系统，兼具 KVM 全虚拟化与 LXC 极轻量容器，是打造家庭“All in One”私有云数据中心的无冕之王！
 
-## 为什么要用 PVE 而不是物理机直装？降维打击的优势
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+> - **裸金属虚拟化优势**：直接运行于物理硬件之上，相比 ESXi 更加开放灵活，支持 Debian 原生生态、ZFS 存储池与全功能 Linux 驱动。
+> - **秒级时光机快照**：配置网络或更新前打一个 Snapshot，折腾翻车仅需 3 秒即可一键回滚如初。
+> - **PCIe 硬件直通 (IOMMU Passthrough)**：可将特定网口、SATA 控制器或 Intel 核显无损“透传”给虚拟机，获得 99%+ 的原生硬件性能。
+> - **开箱换源调优**：PVE 8 安装后一键去除企业订阅弹窗，换为国内清华/中科大开源镜像源，开启 CPU 动态调频降低发热。
 
-在物理机直接装个 Linux 或软路由系统，一旦想换系统或者手贱敲错配置导致开不了机，你就得找个键盘显示器插上去重装，所有数据都会灰飞烟灭。
+---
 
-**但在 PVE 环境中（这被成为 All-in-One 架构）：**
-1. **快照回滚（Snapshot）**：部署某个复杂的网络配置前，点一下【生成快照】。配置爆了网断了？点一下【回滚】，短短 3 秒后，那台虚拟机就像按下了时光倒流键一样恢复如初。
-2. **硬件直通（Passthrough）**：通过 IOMMU，你可以把核显直接“穿透”分配给负责看电影的虚拟机；把四个网口中的两个“穿透”分配给负责做软路由的虚拟机。让它们认为自己独占了这个物理接口，获得接近原生损耗为零的极速。
-3. **隔离部署与超轻量容器**：对于跑小脚本的任务，PVE 提供原生的 LXC（Linux 容器）。这种容器和宿主机共用内核，但完全逻辑隔离，开机只要 1 秒钟，空载内存不到 30 M！
+## 🛠️ 2026 生产级 PVE 安装与硬件要求
 
-## 极简安装流程速递
+### 1. BIOS 关键设置（开机狂按 F2 / Delete）
+- 开启 **VT-x / AMD-V**（CPU 硬件虚拟化支持）。
+- 开启 **VT-d / AMD IOMMU**（硬件直通必备）。
+- 关闭 **Secure Boot**（安全启动）。
+- 开启 **AC Recovery (Power On)**：来电自动开机，断电恢复后无需手动按开机键。
 
-### 1. 制作启动盘
-前往 Proxmox 官网下载最新的 ISO 镜像。拿一个废旧 U 盘，使用软件 `Rufus` (Windows) 或 `balenaEtcher` (Mac/Win) 将镜像如同刻录 Windows PE 一样写入到 U 盘中。
+### 2. 网络规划与安装参数
+- 使用 Rufus 或 balenaEtcher 将 PVE 8.x ISO 写入 U 盘。
+- 安装向导中分配固定静态 IP（如主路由为 `192.168.1.1`，PVE 设为 `192.168.1.100`，网关指向 `192.168.1.1`）。
 
-### 2. BIOS 配置大前提
-把小主机接上显示器和键盘，开机狂按 F2（或 Delete / Esc）进入 BIOS。找到这几个选项必须打开：
-* `Intel Virtualization Technology (VT-x)` 或 `AMD-V` （开启虚拟化核心）
-* `Intel VT-d` 或 `AMD IOMMU` （开启硬件直通必备）
-* 关闭 `Secure Boot`（安全启动）
+---
 
-### 3. 安装引导系统
-插上 U 盘，重启从 U 盘引导，你就会看到黑底白字的 Proxmox 大图标：
-* 一路回车同意协议协议 (`I Agree`)。
-* 选定你需要安装的系统固态硬盘。
-* 最关键的一步：**手动配置内网管理 IP。** 如果你的普通家庭网络网段是 `192.168.1.x`。你的光猫/主路由是 `192.168.1.1`，请给 PVE 设置一个固定的静态 IP（这是你以后远程管理的唯一入口），比如 `192.168.1.100`。
-* 设定极其强壮的 root 密码。
+## 🚀 PVE 8 装机必备三大优化脚本
 
-等待跑条结束，小主机重启，拔掉 U 盘，此时屏幕会停在一个黑色命令行登录界面。
-**大功告成，不用再去管那个屏幕和键盘了！**
+在主力机浏览器打开 `https://192.168.1.100:8006`，使用 `root` 登录控制台，进入 Shell 执行：
 
-## 后续的优雅远程管理
+### 1. 切换国内开源软件源并去除企业订阅弹窗
+```bash
+# 禁用官方企业商业源
+sed -Ezi.bak "s/(<tbody class=\"x-grid-body\">)/<!--\1-->/" /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js
+rm -f /etc/apt/sources.list.d/pve-enterprise.list
 
-回到你的主力电脑打开浏览器，在地址栏属于刚才我们配置的高级管理面板地址（千万注意要加 https 和端口号）：
-`https://192.168.1.100:8006`
+# 添加国内无订阅开源源
+echo "deb https://mirrors.ustc.edu.cn/proxmox/debian/pve bookworm pve-no-subscription" > /etc/apt/sources.list.d/pve-no-subscription.list
+apt update
+```
 
-浏览器必定会报证书风险，不管它，点击“继续前往/高级强制访问”。
+### 2. 开启 PCIe / IOMMU 硬件直通支持
+编辑 `/etc/default/grub`：
+```bash
+# Intel CPU 添加 intel_iommu=on iommu=pt；AMD CPU 添加 amd_iommu=on iommu=pt
+GRUB_CMDLINE_LINUX_DEFAULT="quiet intel_iommu=on iommu=pt"
+```
+更新 grub 并重启：`update-grub && reboot`。
 
-登录账号：`root`
-密码：`你设置的超强密码`
+---
 
-一个充满了专业数据可视化面板、左侧按节点分布的云数据中心监控台，赫然出现在你的私人电脑上！在这个网页管理台中：你可以点几下鼠标立刻创建出一台带界面的 Win11、或者一台只有纯黑环境的 Debian 系统来跑脚本、再顺手安装一个基于 iKuai 的软路由去给全家发 IP 分配网管。
+## ❓ 常见问题与 AI 快问快答 (FAQ)
 
-## 结语
+### Q1: PVE 里的虚拟机（VM）与 LXC 容器有什么本质区别？
+**答**：KVM 虚拟机（VM）模拟完整虚拟硬件，支持运行 Windows、OpenWrt、iKuai；而 LXC 容器与宿主机共享 Linux 内核，开机仅需 1 秒且内存开销不足 30MB，适合跑 Docker、Nginx 或数据库。
 
-从现在开始，这台小主机彻底化身为了你手中任意揉捏的“云上沙盒”。
+### Q2: 自建 PVE 节点出海拉取镜像选哪家海外 VPS 最快？
+**答**：在 **DMIT** 或 **搬瓦工** 的 **中国电信 CN2 GIA** 或 **联通 AS9929** 专线 VPS 上配置出海跳板，PVE 拉取 GitHub、Docker Hub 镜像可跑满千兆带宽。选购参考见 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
 
-在这个 PVE 环境上，你可以毫无畏惧地肆意破坏系统做任何网络实验，这就是拥抱云计算底层基建的第一步！在后续的文章里，我们将教你如何在 PVE 中创建一个 LXC 容器并部署你的第一个专属纯私域云盘与家庭级内网透明代理网关。
+---
+
+_（相关资源导航：如果您需要购买部署云端虚拟化与中继跳板的独立 VPS，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线推荐见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_
