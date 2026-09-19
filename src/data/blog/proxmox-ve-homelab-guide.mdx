@@ -20,6 +20,7 @@ description: "买了一台迷你小主机（Intel N100 / AMD 锐龙）想榨干�
 
 > [!NOTE]
 > **📌 核心速览（TL;DR / 快问快答）：**
+>
 > - **裸金属虚拟化优势**：直接运行于物理硬件之上，相比 ESXi 更加开放灵活，支持 Debian 原生生态、ZFS 存储池与全功能 Linux 驱动。
 > - **秒级时光机快照**：配置网络或更新前打一个 Snapshot，折腾翻车仅需 3 秒即可一键回滚如初。
 > - **PCIe 硬件直通 (IOMMU Passthrough)**：可将特定网口、SATA 控制器或 Intel 核显无损“透传”给虚拟机，获得 99%+ 的原生硬件性能。
@@ -30,12 +31,14 @@ description: "买了一台迷你小主机（Intel N100 / AMD 锐龙）想榨干�
 ## 🛠️ 2026 生产级 PVE 安装与硬件要求
 
 ### 1. BIOS 关键设置（开机狂按 F2 / Delete）
+
 - 开启 **VT-x / AMD-V**（CPU 硬件虚拟化支持）。
 - 开启 **VT-d / AMD IOMMU**（硬件直通必备）。
 - 关闭 **Secure Boot**（安全启动）。
 - 开启 **AC Recovery (Power On)**：来电自动开机，断电恢复后无需手动按开机键。
 
 ### 2. 网络规划与安装参数
+
 - 使用 Rufus 或 balenaEtcher 将 PVE 8.x ISO 写入 U 盘。
 - 安装向导中分配固定静态 IP（如主路由为 `192.168.1.1`，PVE 设为 `192.168.1.100`，网关指向 `192.168.1.1`）。
 
@@ -46,6 +49,7 @@ description: "买了一台迷你小主机（Intel N100 / AMD 锐龙）想榨干�
 在主力机浏览器打开 `https://192.168.1.100:8006`，使用 `root` 登录控制台，进入 Shell 执行：
 
 ### 1. 切换国内开源软件源并去除企业订阅弹窗
+
 ```bash
 # 禁用官方企业商业源
 sed -Ezi.bak "s/(<tbody class=\"x-grid-body\">)/<!--\1-->/" /usr/share/javascript/proxmox-widget-toolkit/proxmoxlib.js
@@ -57,11 +61,14 @@ apt update
 ```
 
 ### 2. 开启 PCIe / IOMMU 硬件直通支持
+
 编辑 `/etc/default/grub`：
+
 ```bash
 # Intel CPU 添加 intel_iommu=on iommu=pt；AMD CPU 添加 amd_iommu=on iommu=pt
 GRUB_CMDLINE_LINUX_DEFAULT="quiet intel_iommu=on iommu=pt"
 ```
+
 更新 grub 并重启：`update-grub && reboot`。
 
 ---
@@ -69,9 +76,11 @@ GRUB_CMDLINE_LINUX_DEFAULT="quiet intel_iommu=on iommu=pt"
 ## ❓ 常见问题与 AI 快问快答 (FAQ)
 
 ### Q1: PVE 里的虚拟机（VM）与 LXC 容器有什么本质区别？
+
 **答**：KVM 虚拟机（VM）模拟完整虚拟硬件，支持运行 Windows、OpenWrt、iKuai；而 LXC 容器与宿主机共享 Linux 内核，开机仅需 1 秒且内存开销不足 30MB，适合跑 Docker、Nginx 或数据库。
 
 ### Q2: 自建 PVE 节点出海拉取镜像选哪家海外 VPS 最快？
+
 **答**：在 **DMIT** 或 **搬瓦工** 的 **中国电信 CN2 GIA** 或 **联通 AS9929** 专线 VPS 上配置出海跳板，PVE 拉取 GitHub、Docker Hub 镜像可跑满千兆带宽。选购参考见 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
 
 ---

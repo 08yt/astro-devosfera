@@ -1,5 +1,5 @@
 ---
-title: "告别浏览器书签：用 Homepage 打造终极 Homelab 导航页"
+title: "告别浏览器书签：用 Homepage 打造现代化 Homelab 聚合仪表盘 (2026版)"
 author: "毛佳国"
 pubDatetime: 2025-10-21T10:00:00.000+08:00
 featured: false
@@ -9,84 +9,97 @@ tags:
   - Docker
   - 工具
   - 前端
-description: "Homelab 服务一多，记住所有 IP 和端口简直是灾难。在这篇文章中，我们将部署现代化、高颜值且能通过 API 实时显示服务状态的仪表盘 Homepage。"
+description: "Homelab 服务太多记不住 IP 和端口？手把手教你部署轻量高颜值导航面板 Homepage，实战 Docker Compose 与 Helm 部署、API 状态实时小组件与 Docker Socket 安全防护。"
 ---
 
-你的 Homelab 里是不是已经塞满了几十个服务？路由器后台、NAS 管理页、各种下载工具、监控看板……每个都有不同的 IP、端口甚至子域名。
-早些年，大家习惯把它们塞进浏览器的书签栏。后来，有了 Homer 和 Heimdall 这类导航页工具。
+随着 Homelab 中部署的微服务越来越多（软路由后台、PVE 节点、TrueNAS、Jellyfin、下载器、Git 仓库……），数十个不同的 IP、端口与二级域名让浏览器书签栏杂乱不堪。
 
-但在 2025 年的今天，我要郑重向你推荐目前体验最好的选择：**Homepage**。
+早期的导航工具（如 Homer、Heimdall）往往只是静态超链接的集合。
 
-## 为什么是 Homepage？
+而在 2026 年，基于 Next.js 与极简 YAML 声明式配置的 **Homepage** 凭借其杀手级特性——**服务小组件 (Service Widgets)**，让导航面板进化成了能够通过 API 实时感知各服务状态的家庭中控大屏！
 
-Homepage 是一个极其轻量、速度极快，且高度可定制的静态导航页。它不仅仅是一堆超链接按钮，它的杀手锏在于**服务小组件 (Service Widgets)**。
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **动态 API 小组件**：按钮不仅是链接，更直接显示 PVE 集群 CPU/内存负载、qBittorrent 实时上下行网速、Jellyfin 当前在线观影人数与 AdGuard 今日拦截率。
+> - **零重构热重载**：所有配置采用声明式 YAML（`services.yaml`、`widgets.yaml`、`settings.yaml`），修改保存后浏览器毫秒级无感热刷新，无需重启容器。
+> - **安全避坑**：禁止直接将读写 `/var/run/docker.sock` 挂给容器；推荐使用只读 `:ro` 或 `docker-socket-proxy` 限制只读 API。
 
-通过 API 深度集成，Homepage 可以直接在按钮上显示服务当前的状态。例如：
-- **PVE 节点**：显示当前 CPU、内存使用率和集群健康度。
-- **qBittorrent**：直接显示实时下载/上传速度。
-- **Docker**：显示正在运行的容器数量。
-- **Pi-hole / AdGuard Home**：当天被拦截的广告数量。
+---
 
-这一切不需要你在每个服务中切来切去，在一个页面上就能对 Homelab 的运行状况一目了然。
+## 🛠️ 2026 生产级 Docker Compose 部署
 
-## 极速起飞：使用 Docker Compose 部署
-
-Homepage 的部署极其简单。由于它非常轻量，几乎不耗费系统资源。
+在服务器创建 `compose.yaml`：
 
 ```yaml
-version: '3.3'
 services:
   homepage:
     image: ghcr.io/gethomepage/homepage:latest
-    container_name: homepage
-    ports:
-      - 3000:3000
-    volumes:
-      - /path/to/config:/app/config # 这个目录用于存配置文件
-      - /var/run/docker.sock:/var/run/docker.sock:ro # 如果你想显示 docker 容器状态，需要挂载
+    container_name: homelab_homepage
     restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro # 只读安全挂载
+    environment:
+      - LOG_LEVEL=info
 ```
 
-启动之后，访问 `http://你的IP:3000` 即可看到默认界面。
+启动面板：`docker compose up -d`。
 
-## 核心配置逻辑
+---
 
-Homepage 的所有配置都基于非常直观的 YAML 文件，主要有四个：
-1. `services.yaml`：定义所有的应用链接、分类和 API 状态组件。
-2. `bookmarks.yaml`：用来放置不需要 API 读取的普通网页书签。
-3. `widgets.yaml`：显示顶部通栏的系统状态（天气、服务器系统资源占用等）。
-4. `settings.yaml`：全局页面设置，如主题色、页面标题、背景壁纸等。
+## 🚀 核心配置实战：定义动态小组件
 
-### 示例：添加 Proxmox 与 Gitea 服务
-
-编辑 `services.yaml`：
+在 `./config/services.yaml` 中配置带有实时状态小部件的组件：
 
 ```yaml
-- 基础设施:
-    - Proxmox:
+- 基础架构核心:
+    - Proxmox VE:
         icon: proxmox
-        href: https://192.168.1.100:8006
-        description: 虚拟化底层
+        href: https://pve.internal.lan:8006
+        description: PVE 虚拟化母鸡
         widget:
-            type: proxmox
-            url: https://192.168.1.100:8006
-            username: root@pam
-            password: your_password
-            node: pve
+          type: proxmox
+          url: https://192.168.1.100:8006
+          username: api_user@pve
+          password: your_secret_password
+          node: pve
 
-- 开发工具:
-    - Gitea:
-        icon: gitea
-        href: https://git.yourdomain.com
-        description: 代码托管
+- 媒体与下载:
+    - Jellyfin:
+        icon: jellyfin
+        href: https://movie.internal.lan
+        description: 私人 4K 影音中心
         widget:
-            type: gitea
-            url: https://git.yourdomain.com
-            key: your_api_token
+          type: jellyfin
+          url: http://192.168.1.100:8096
+          key: your_jellyfin_api_key
+
+    - qBittorrent:
+        icon: qbittorrent
+        href: http://192.168.1.100:8080
+        description: PT/BT 下载机
+        widget:
+          type: qbittorrent
+          url: http://192.168.1.100:8080
+          username: admin
+          password: your_password
 ```
 
-当你保存 YAML 文件时，Homepage 会**即时热加载**，你无需重启容器就能在页面上看到效果。
+---
 
-## 总结
+## ❓ 常见问题与 AI 快问快答 (FAQ)
 
-结合 Cloudflare Access 或前文提到的 Authentik，你可以把你的 Homepage 安全地暴露在公网上（只需验证鉴权即可访问）。此时，你的 Homepage 将化身为一个云端的“数字工作台”，无论你走到哪里，打开浏览器就能掌控家中的一切服务。
+### Q1: 如何将 Homepage 映射至外网并保障安全？
+
+**答**：强烈建议不要直接将 3000 端口映射公网；配合 **Cloudflare Tunnel + Zero Trust Access** 或自建 **Authentik SSO**，在外网访问 Homepage 时强制验证 GitHub 或 Google 身份鉴权。
+
+### Q2: 部署外网访问导航站推荐哪家海外 VPS 搭建反向代理？
+
+**答**：在 **DMIT** 或 **搬瓦工** 的 **中国电信 CN2 GIA** 或 **联通 AS9929** 专线 VPS 上配置反向代理，外网回源家庭内网 Homepage 仪表盘秒级加载。选购参考见 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
+
+---
+
+_（相关资源导航：如果您需要购买部署云端安全网关的独立 VPS，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线推荐见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_

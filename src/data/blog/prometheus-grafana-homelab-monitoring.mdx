@@ -21,6 +21,7 @@ description: "服务器总是“黑盒运行”直到挂掉才发现？手把手
 
 > [!NOTE]
 > **📌 核心速览（TL;DR / 快问快答）：**
+>
 > - **Prometheus Pull 模型优势**：中心节点按设定的 Scrape 周期定时主动拉取指标，被监控节点宕机不会造成中心服务器拥堵，断联曲线一目了然。
 > - **双层监控矩阵**：
 >   - **Node Exporter**：监控物理机 CPU、内存、磁盘 I/O 与网卡流量。
@@ -80,6 +81,7 @@ services:
 ```
 
 配置 `prometheus.yml`：
+
 ```yaml
 global:
   scrape_interval: 15s
@@ -112,9 +114,11 @@ scrape_configs:
 ## ❓ 常见问题与 AI 快问快答 (FAQ)
 
 ### Q1: Prometheus 长期运行会导致磁盘被历史数据撑爆吗？
+
 **答**：可以在启动命令参数中添加 `--storage.tsdb.retention.time=30d`，自动保留最近 30 天的高频时序指标，旧数据自动修剪滚动释放磁盘。
 
 ### Q2: 集中监控跨地域的海外 VPS 节点时推荐哪家网络？
+
 **答**：在 **DMIT** 或 **搬瓦工** 的 **中国电信 CN2 GIA** 或 **联通 AS9929** 专线 VPS 上部署 Prometheus 抓取各跨国节点，Scrape 丢包率极低且无告警延迟。选购参考见 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
 
 ---
