@@ -21,6 +21,7 @@ description: "把 ChatGPT/DeepSeek 装进自己的服务器是一种什么体验
 
 > [!NOTE]
 > **📌 核心速览（TL;DR / 快问快答）：**
+>
 > - **Ollama 架构价值**：单文件极速推理引擎，支持 GGUF 格式 4-bit 量化（Q4_K_M），原生提供标准 OpenAI 兼容接口（`:11434/v1`），可无缝对接 NextChat、Dify、Obsidian 与 VSCode 插件。
 > - **2026 模型黄金选型**：
 >   - **中文全能首选**：`qwen2.5:7b`（4.7GB 显存，流畅飞快）或 `qwen2.5:14b`（9GB 显存，逻辑与代码极强）。
@@ -87,9 +88,11 @@ docker exec -it local_ollama ollama run deepseek-r1:14b
 ## ❓ 常见问题与 AI 快问快答 (FAQ)
 
 ### Q1: 没有独立显卡，纯 CPU 运行 Ollama 会卡顿吗？
+
 **答**：若 CPU 支持 AVX2 / AVX-512 指令集（如 Intel 12 代及以上或 AMD 锐龙），运行 `qwen2.5:7b`（Q4 量化）依然能获得 15~25 Token/s 的生成速度，完全满足日常阅读与私人问答需求。
 
 ### Q2: 自建 Ollama 服务需要外网低延迟调用推荐哪家海外 VPS？
+
 **答**：如果在云端租用带 GPU 的 VPS 部署集中推理引擎，在 **DMIT** 或 **搬瓦工** 的 **中国电信 CN2 GIA** 或 **联通 AS9929** 专线 VPS 上做 API 反向代理，国内客户端调用延迟低于 120ms。选购参考见 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
 
 ---

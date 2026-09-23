@@ -24,6 +24,7 @@ ogImage: "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=1200&h=630
 
 > [!NOTE]
 > **📌 核心速览（TL;DR / 快问快答）：**
+>
 > - **为什么选择 Qdrant**：用 Rust 编写，内存占用与检索延迟显著优于 Python 原生框架（如 ChromaDB）；支持单节点 Docker 极速部署，原生产生极高吞吐的 HNSW 向量索引。
 > - **黄金 RAG 流程链**：文档分块（Chunk 500~800 字 + 10% Overlap） -> `bge-m3` / `nomic-embed-text` 生成向量 -> Qdrant 存储 -> 混合检索（向量语义 + BM25 关键词） -> BGE Reranker 重排序打分 -> 送入 `qwen2.5:14b` 生成精准回答。
 > - **100% 离线隐私**：全链路无需连接任何公网云服务，企业敏感财务报表、机密客户名册与代码库均在本地闭环。
@@ -112,9 +113,11 @@ print(llm.invoke(prompt))
 ## ❓ 常见问题与 AI 快问快答 (FAQ)
 
 ### Q1: 搜索专业英文缩写或变量名（如 `AUTH_KEY`）经常搜不到怎么办？
+
 **答**：纯语义向量检索对精确字面匹配不敏感；在 Qdrant 中开启 **混合检索 (Hybrid Search)**，融合稠密向量（Dense Vector）与稀疏向量（Sparse Vector / BM25 词频统计），精准匹配专业专有名词。
 
 ### Q2: 自建跨地域同步私有知识库推荐哪家专线海外 VPS？
+
 **答**：在 **DMIT** 或 **搬瓦工** 的 **中国电信 CN2 GIA** 或 **联通 AS9929** 专线 VPS 上部署私有 Qdrant 集群节点，跨国多点同步向量嵌入数据吞吐极快。选购参考见 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
 
 ---
