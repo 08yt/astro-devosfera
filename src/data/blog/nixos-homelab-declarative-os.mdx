@@ -9,16 +9,28 @@ tags:
   - NixOS
   - 运维
   - Homelab
-description: "每次重装服务器都要背一遍安装命令？是时候拥抱“声明式配置”的巅峰之作 NixOS 了，教你如何用几行代码定义出一个拥有灵魂的操作系统。"
+description: "每次重装服务器都要背一遍安装命令？是时候拥抱"声明式配置"的巅峰之作 NixOS 了，教你如何用几行代码定义出一个拥有灵魂的操作系统。"
 ---
 
-在折腾 Homelab 的过程中，“重装系统”或者“迁移环境”（比如从一台旧的物理机迁移到新的迷你主机）可能是最让人头疼的事情。
+import { Tweet, YouTube } from "astro-embed";
+
+> 📌 **核心速览 (TL;DR)**
+>
+> **NixOS** 是"声明式操作系统"的极致实现——整台服务器的一切（内核参数、软件包、用户权限、防火墙规则、Docker 服务）全部由一个 `configuration.nix` 文件定义，`nixos-rebuild switch` 一键原子部署，任何改动都可在 Grub 菜单**秒级回滚**。
+>
+> **Flakes**（2026 年推荐）进一步引入 `flake.lock` 精确锁定所有依赖版本，像 `pnpm-lock.yaml` 一样保证你的系统十年后仍能被 100% 复现。
+
+---
+
+在折腾 Homelab 的过程中，"重装系统"或者"迁移环境"（比如从一台旧的物理机迁移到新的迷你主机）可能是最让人头疼的事情。
 
 对于传统的 Debian 或 Ubuntu，你需要配置网卡、安装环境依赖、挂载磁盘、配置防火墙、安装 Docker、部署各种系统的 cron 任务…… 即使你用 Ansible 也难免遇到脏环境冲突的问题。
 
 既然 Kubernetes 已经让**声明式基础设施（Infrastructure as Code）**成为云原生的标配，为什么我们的服务器系统本身不能也是声明式的呢？
 
-主角登场：**NixOS**
+主角登场：**NixOS**。
+
+---
 
 ## 什么是 NixOS？
 
@@ -27,19 +39,33 @@ NixOS 是一个建立在独创的 Nix 包管理器之上的 Linux 发行版。
 它的核心哲学非常极端：**整个系统，从内核参数、安装的软件、用户权限、开机自启服务到各种软件的具体配置文件，全部由一个或多个纯文本的 `.nix` 配置文件来定义。**
 
 这意味着：
-1. **可复现性（Reproducibility）**：你把你的 `configuration.nix` 拷到任何一台空机器上，敲一行命令，得到的新系统**每一丝**底层环境都和老系统**完全一样**。
-2. **原子升级与极速回滚**：当你更改了配置文件并重新构建系统时，如果新系统有引发崩溃的 Bug，你只需要在 Grub 引导菜单选择上一个时代（Generation），系统会在两秒内退回到升级前的完美状态。
+
+1. **可复现性（Reproducibility）**：你把你的 `configuration.nix` 拷到任何一台空机器上，敲一行命令，得到的新系统**每一丝**底层环境都和老系统**完全一样**；
+2. **原子升级与极速回滚**：当你更改了配置文件并重新构建系统时，如果新系统有引发崩溃的 Bug，你只需要在 Grub 引导菜单选择上一个世代（Generation），系统会在两秒内退回到升级前的完美状态；
+3. **多版本并存**：你的系统可以并存三个不同版本的 Node.js 或 Python，它们互相不仅没有任何冲突，甚至完全不知道对方的存在。
+
+---
 
 ## 概念颠覆：没有全局依赖
 
 传统 Linux 把所有软件混在一起安装（比如所有的动态链接库都在 `/usr/lib`），很容易导致依赖地狱。
 
-在 NixOS 中，压根没有标准的 `/usr/bin`。所有的软件、库文件都被安装到了完全隔离的 `/nix/store` 目录中，每个软件带有一个根据其依赖环境计算出的 Hash 摘要。
-你这台系统可以**并存三个不同版本的 Node.js 或 Python**，它们互相不仅没有任何冲突，甚至完全不知道对方的存在！
+在 NixOS 中，压根没有标准的 `/usr/bin`。所有的软件、库文件都被安装到了完全隔离的 `/nix/store` 目录中，每个软件带有一个根据其依赖环境计算出的 Hash 摘要：
 
-## 开始你的第一次配置
+```
+/nix/store/abc123...-nodejs-20.0.0/bin/node
+/nix/store/xyz789...-nodejs-18.17.0/bin/node
+```
 
-一个最基础的 NixOS 包含了以下元素。你甚至可以在文件中直接定义并启动 Docker 和你需要暴露的端口：
+两个版本的 Node.js 完全独立，互不干扰。
+
+---
+
+## 开始你的第一次声明式配置
+
+### 基础 `configuration.nix`
+
+一个完整的 Homelab 配置，涵盖网络、防火墙、Docker、SSH 和用户管理：
 
 ```nix
 # /etc/nixos/configuration.nix
@@ -49,54 +75,200 @@ NixOS 是一个建立在独创的 Nix 包管理器之上的 Linux 发行版。
 {
   imports = [ ./hardware-configuration.nix ];
 
-  # 设置 Bootloader
+  # Bootloader（UEFI 模式）
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  # 配置主机名
-  networking.hostName = "homelab-server1"; 
+  # 主机名
+  networking.hostName = "homelab-server1";
 
-  # 时区与 Locales
+  # 时区与本地化
   time.timeZone = "Asia/Shanghai";
+  i18n.defaultLocale = "zh_CN.UTF-8";
 
-  # 放行防火墙端口
-  networking.firewall.allowedTCPPorts = [ 22 80 443 3000 ];
+  # 防火墙：放行 SSH / HTTP / HTTPS / 常用服务端口
+  networking.firewall = {
+    enable = true;
+    allowedTCPPorts = [ 22 80 443 3000 8080 ];
+  };
 
-  # 启用 Docker
-  virtualisation.docker.enable = true;
+  # 启用 Docker（含 rootless 模式支持）
+  virtualisation.docker = {
+    enable = true;
+    enableOnBoot = true;
+    autoPrune.enable = true; # 自动清理悬空镜像
+  };
+
+  # 系统级常用工具（全局可用）
+  environment.systemPackages = with pkgs; [
+    git
+    vim
+    neovim
+    htop
+    btop
+    curl
+    wget
+    ripgrep
+    fd
+    docker-compose
+  ];
 
   # 创建日常使用的用户
   users.users.maojiaguo = {
     isNormalUser = true;
-    extraGroups = [ "wheel" "docker" ]; # 把自己加入 sudo 和 docker 组
+    extraGroups = [ "wheel" "docker" "networkmanager" ]; # sudo + docker + 网络管理
+    shell = pkgs.zsh;
     packages = with pkgs; [
-      tree
-      htop
-      git
-      neovim
+      zsh
+      oh-my-zsh
+      starship
+      tmux
     ];
   };
 
-  # 开启 SSH
-  services.openssh.enable = true;
+  # 启用 SSH（禁止 root 密码登录）
+  services.openssh = {
+    enable = true;
+    settings = {
+      PermitRootLogin = "no";
+      PasswordAuthentication = false; # 仅允许密钥登录
+    };
+  };
+
+  # 自动安全更新（仅应用安全补丁，不自动升级大版本）
+  system.autoUpgrade = {
+    enable = true;
+    allowReboot = false;
+  };
+
+  system.stateVersion = "24.11";
 }
 ```
 
-当你改动了这个文件之后，只需要执行：
+应用配置：
+
 ```bash
 sudo nixos-rebuild switch
 ```
 
-系统会根据这本“菜谱”，在线拉取各种原料，帮你“烹饪”出这个系统。所有不在配置里写明的东西（比如你之前手动用 apt 装的乱七八糟的残留）都不会污染主系统。
+系统会根据这份"菜谱"，在线拉取各种原料，帮你"烹饪"出这个系统。所有不在配置里写明的东西（比如你之前手动安装的乱七八糟的残留）都不会污染主系统。
+
+---
 
 ## Flakes：将版本控制推向极致
 
 在 2026 年，几乎没有 NixOS 玩家还在使用纯粹的 `configuration.nix`。大家都在使用一种被称为 **Flakes** 的高级特性。
-Flakes 引入了类似 `package-lock.json` 的机制（`flake.lock`），这意味着只要你的 lock 文件不更新，十年后你构建出来的系统和今天的不仅配置一模一样，而且每个软件的**二进制版本分毫不差**。
 
-更可怕的是，你可以把家里的软路由、NAS、服务器的配置文件写在一个 Git 仓库里。以后在新机器装系统，你只需执行一段指向你 Github 仓库的命令，属于你的那一台服务器就立刻“原神归位”。
+Flakes 引入了类似 `package-lock.json` 的机制（`flake.lock`）——只要你的 lock 文件不更新，十年后你构建出来的系统和今天的配置一模一样，每个软件的**二进制版本分毫不差**。
 
-## 总结
+### 启用 Flakes
 
-NixOS 具有难以置信的学习曲线，它要求你像写代码一样去写系统。它打破了你对 Linux 的传统认知。
-但只要你跨过了初期的阵痛，你就会拥有一种无与伦比的安全感：**你的服务器永远不会变脏，你的所有努力和折腾，都浓缩在了一套能够伴随你终生的 Git 代码中。** 这才是程序员最大的浪漫。
+在你的 `configuration.nix` 中添加：
+
+```nix
+nix.settings.experimental-features = [ "nix-command" "flakes" ];
+```
+
+### 最简 `flake.nix` 示例
+
+```nix
+{
+  description = "My Homelab NixOS Configuration";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.11";
+    home-manager = {
+      url = "github:nix-community/home-manager/release-24.11";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+  };
+
+  outputs = { self, nixpkgs, home-manager, ... }: {
+    nixosConfigurations = {
+      homelab-server1 = nixpkgs.lib.nixosSystem {
+        system = "x86_64-linux";
+        modules = [
+          ./configuration.nix
+          home-manager.nixosModules.home-manager
+          {
+            home-manager.useGlobalPkgs = true;
+            home-manager.useUserPackages = true;
+            home-manager.users.maojiaguo = import ./home.nix;
+          }
+        ];
+      };
+    };
+  };
+}
+```
+
+用 Flakes 构建系统：
+
+```bash
+sudo nixos-rebuild switch --flake .#homelab-server1
+```
+
+### 多机器统一管理
+
+更可怕的是，你可以把家里的软路由、NAS、服务器的配置文件写在一个 Git 仓库里：
+
+```
+my-nixos-configs/
+├── flake.nix
+├── flake.lock
+├── hosts/
+│   ├── homelab-server1/configuration.nix
+│   ├── nas/configuration.nix
+│   └── router/configuration.nix
+└── modules/
+    ├── common.nix
+    └── docker.nix
+```
+
+以后在新机器装系统，只需执行：
+
+```bash
+nixos-install --flake github:youruser/my-nixos-configs#homelab-server1
+```
+
+属于你的那一台服务器就立刻"原神归位"。
+
+---
+
+## 回滚演示：30 秒从崩溃中恢复
+
+```bash
+# 查看所有可回滚的历史世代（Generation）
+nix-env --list-generations --profile /nix/var/nix/profiles/system
+
+# 回滚到上一个世代
+sudo nixos-rebuild switch --rollback
+
+# 或者指定特定世代编号
+sudo nix-env --switch-generation 42 --profile /nix/var/nix/profiles/system
+sudo /nix/var/nix/profiles/system/bin/switch-to-configuration switch
+```
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+**Q：NixOS 的学习曲线有多陡？普通 Linux 用户能上手吗？**
+
+A：NixOS 的学习曲线是 Linux 发行版中最陡的之一，需要理解函数式编程思维（Nix 语言本质上是一个纯函数式配置语言）。建议学习路线：先在 VM 里玩 → 读 NixOS Wiki → 参考社区的 dotfiles 仓库 → 再迁移实体机。预估完整入门需要 2–4 周。
+
+**Q：NixOS 能运行 Docker 吗？和 Ubuntu 上的 Docker 有什么差异？**
+
+A：完全可以。在 `configuration.nix` 中设置 `virtualisation.docker.enable = true` 即可，体验与 Ubuntu 上的 Docker 完全一致。差异在于：NixOS 上 Docker 本身也是通过 Nix 包管理声明式安装的，版本和配置都在 Git 中受控。
+
+**Q：Nix Flakes 是稳定功能了吗？**
+
+A：截至 2026 年，Flakes 仍标记为 "experimental"，但社区 90% 的人都在生产环境使用它，实际上非常稳定。NixOS 官方计划在 25.05 版本将其正式稳定化。
+
+**Q：如何在 NixOS 上运行不在 nixpkgs 里的软件？**
+
+A：四种方式：① 使用 `nix-shell` / `nix shell` 临时环境；② 通过 `fetchurl` 手动打包；③ 使用 `builtins.fetchTarball` 引入第三方 Nix overlay；④ 对于闭源二进制，使用 `steam-run` 或 `nix-ld` 提供标准 ELF 动态链接器兼容层。
+
+**Q：NixOS 适合用作 Homelab Docker 宿主机吗？**
+
+A：非常适合。声明式配置意味着你的 Docker Compose 文件、Nginx 配置、防火墙规则都纳入 Git 版本控制，迁移到新硬件只需 `nixos-install`，彻底告别"这台服务器我也不知道装了什么"的恐惧感。

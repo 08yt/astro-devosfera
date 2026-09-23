@@ -12,68 +12,178 @@ tags:
 description: "担心笔记软件倒闭？不用官方昂贵的同步服务，如何使用开源的 CouchDB 为你的 Obsidian 搭建一套毫秒级的多端实时同步方案。"
 ---
 
+import { Tweet, YouTube } from "astro-embed";
+
+> 📌 **核心速览 (TL;DR)**
+>
+> **Self-hosted LiveSync + CouchDB** 是 Obsidian 跨端同步的最强自建方案：延迟约 200–500 ms（远优于 iCloud/坚果云的分钟级延迟），端对端加密（E2E），完全私有，数据掌握在自己手中。
+>
+> **核心组件**：CouchDB 3.x（Docker 部署）+ Nginx HTTPS 反代 + Obsidian Self-hosted LiveSync 插件。**全部开源免费**，无需订阅。
+
+---
+
 Obsidian 凭借其 **本地优先 (Local first)** 和纯 Markdown 格式的强大哲学，在笔记软件领域一骑绝尘。它的最大卖点就是你的数据不需要保存在某个服务商的闭源云端里。
 
-但在享受数据绝对掌控权的同时，如何优雅地在 PC 和手机端实现**无缝同步**，成了许多用户的痛点。
-官方的 Obsidian Sync 体验很好，但价格也不差；而使用 iCloud/OneDrive/坚果云，在移动端往往遇到严重的延迟，甚至时不时的因为多端编辑产生文件冲突，让人抓狂。
+但在享受数据绝对掌控权的同时，如何优雅地在 PC 和手机端实现**无缝同步**，成了许多用户的痛点。官方的 Obsidian Sync 体验很好，但价格也不差（$8/月）；而使用 iCloud/OneDrive/坚果云，在移动端往往遇到严重的延迟，甚至时不时因为多端编辑产生文件冲突，让人抓狂。
 
-这时候，如果你有一台 24 小时开机的 NAS 或云服务器，利用 **Self-hosted LiveSync 插件 + 自建 CouchDB**，就是你最好的选择——免费、私有，最重要的是，**真正的实时级别的修改同步**。
+这时候，如果你有一台 24 小时开机的 NAS 或云服务器，利用 **Self-hosted LiveSync 插件 + 自建 CouchDB**，就是你最好的选择——免费、私有，最重要的是，**真正的实时级别修改同步**。
 
-## LiveSync 方案的原理是什么？
+---
 
-**Obsidian-livesync** 这个开源插件使用了一个非常有意思的设计模式：**CouchDB**。
+## LiveSync 方案的原理
 
-CouchDB 是一个以 JSON 为文档基础的 NoSQL 数据库，它的杀手锏就是**多主复制 (Multi-Master Replication)** 同步协议。
-在 LiveSync 架构下，相当于在每一台装有 Obsidian 的电脑、手机上都运行一个微型的数据库 (PouchDB，也就是浏览器和应用内部版本的 CouchDB)，而它们都与你自建在服务器上的中心 CouchDB 保持着长连接。
+**Obsidian-livesync** 这个开源插件使用了一个非常有意思的设计模式：
+
+```
+[Mac Obsidian] ─── PouchDB ─── HTTPS ──►
+                                         CouchDB (你的服务器)
+[iPhone Obsidian] ─ PouchDB ─ HTTPS ──►
+```
+
+**CouchDB** 是一个以 JSON 为文档基础的 NoSQL 数据库，其杀手锏是**多主复制（Multi-Master Replication）**同步协议。在 LiveSync 架构下，每一台装有 Obsidian 的设备上都运行一个微型数据库（PouchDB），它们都与你自建在服务器上的中心 CouchDB 保持长连接。
+
 你修改笔记的每一个键盘敲击动作，都会立刻转化成增量数据同步到大后方服务器，再广播给别的在线客户端。一旦离线修改，在上线后也会进行高效率、自带冲突处理的合并。
 
-## Docker Compose 部署您的“后端中心”
+---
 
-我们不直接把数据库端口暴漏，推荐使用现成的 docker-compose 项目启动 CouchDB。
+## 第一步：Docker Compose 部署 CouchDB
 
-首先，找一个你的服务器目录，创建 `docker-compose.yml`：
+找一个你的服务器目录（如 `/opt/obsidian-sync/`），创建 `compose.yml`：
 
 ```yaml
-version: '3.8'
-
 services:
   couchdb:
     image: couchdb:3.3
     container_name: obsidian-couchdb
     restart: unless-stopped
     ports:
-      - "5984:5984"
+      - "127.0.0.1:5984:5984" # 仅监听本地回环，不直接暴露公网
     volumes:
       - ./data:/opt/couchdb/data
-      - ./etc/local.d:/opt/couchdb/etc/local.d
+      - ./etc:/opt/couchdb/etc/local.d
     environment:
       - COUCHDB_USER=admin
-      - COUCHDB_PASSWORD=your_super_strong_password
+      - COUCHDB_PASSWORD=your_super_strong_password_here
 ```
 
-启动数据库：`docker-compose up -d`。至此就完成了基础的数据库部署！
+> ⚠️ **安全要点**：端口绑定到 `127.0.0.1:5984` 而非 `0.0.0.0:5984`，防止 CouchDB 直接暴露在公网。所有外部访问通过 Nginx HTTPS 反代进行。
 
-## 服务配置：反向代理与安全加固
+启动数据库：
 
-由于 CouchDB 需要暴露给移动端连接，而原生的 CouchDB 在大流量或者弱网下不够稳定。
-我们需要通过 Nginx 或者 Traefik 给它套上一层 HTTPS，这不仅能解决跨端明文传输抓包风险，还能在前端规避 CORS 的跨域问题，极大提升了客户端的稳定性。
+```bash
+docker compose up -d
+```
 
-你可以直接在宝塔面板或者 Nginx Proxy Manager (NPM) 里配置反向代理：
-把你绑定的域名（比如 `obsidian.yourdomain.com`），指向 `http://IP:5984`。
+初始化单节点模式（CouchDB 3.x 需要手动完成初始化）：
 
-**重要！关于 CORS：**
-由于移动端的安全限制，很多时候 Obsidian 会要求跨域权限，所以你需要在 Nginx 层处理 CORS 或者打开 CouchDB 本身的跨域限制（通过进入 CouchDB 的 Fauxton 面板完成设定）。
+```bash
+curl -X POST \
+  http://admin:your_super_strong_password_here@localhost:5984/_cluster_setup \
+  -H "Content-Type: application/json" \
+  -d '{"action": "enable_single_node", "bind_address": "0.0.0.0"}'
+```
 
-## 在 Obsidian 中配置 LiveSync
+---
+
+## 第二步：Nginx HTTPS 反向代理
+
+由于 CouchDB 需要暴露给移动端连接，必须通过 Nginx 套上一层 HTTPS。以下是推荐的 Nginx 配置（适用于 Nginx Proxy Manager 的 Advanced 模式，或直接写入 `/etc/nginx/conf.d/obsidian.conf`）：
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name obsidian.yourdomain.com;
+
+    ssl_certificate     /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
+
+    # CORS 配置（Obsidian 移动端需要）
+    add_header Access-Control-Allow-Origin  "*"  always;
+    add_header Access-Control-Allow-Methods "GET, PUT, POST, HEAD, DELETE, OPTIONS" always;
+    add_header Access-Control-Allow-Headers "accept, authorization, content-type, origin, referer" always;
+
+    # 处理 OPTIONS 预检请求
+    if ($request_method = OPTIONS) {
+        return 204;
+    }
+
+    location / {
+        proxy_pass         http://127.0.0.1:5984;
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        # 支持 CouchDB 长轮询 / _changes feed
+        proxy_read_timeout 600s;
+        proxy_buffering    off;
+    }
+}
+```
+
+> 💡 **Let's Encrypt 证书**：使用 Certbot 申请免费证书：`certbot --nginx -d obsidian.yourdomain.com`
+
+---
+
+## 第三步：开启端对端加密（E2E）
+
+Self-hosted LiveSync 支持在同步到 CouchDB 之前对笔记内容进行**客户端加密**，即使服务器被攻击，攻击者只能看到加密后的密文。
+
+在 Obsidian LiveSync 插件设置中：
+
+1. 开启 **End-to-end encryption**；
+2. 输入你的加密密码（**必须在所有设备上保持一致**）；
+3. 点击 **Test E2E Encryption** 确认加密正常工作。
+
+> ⚠️ **密码丢失 = 数据永久无法恢复**。请将加密密码保存在密码管理器（1Password / Bitwarden）中。
+
+---
+
+## 第四步：在 Obsidian 中配置 LiveSync
 
 万事俱备，最后回到你手边的设备：
-1. 在 Obsidian 社区插件中下载安装 **Self-hosted LiveSync**。
-2. 在插件设置中选择 `CouchDB`。
-3. 输入你绑定的公网地址（https：//），填上你的数据库名（自己想一个），并输入用户名 `admin` 及其刚才设定的密码。
-4. 点下 `Test Database Connection`。成功后，直接开启所有同步开关并选择 `Rebuild Everything`。
 
-接着，你在另一台设备的空库同样操作，就能直接从远端拉取刚才完整的笔记库。
+1. 在 Obsidian 社区插件搜索 **Self-hosted LiveSync** 并安装；
+2. 打开插件设置 → 选择 `CouchDB`；
+3. 填写配置：
+   - **URI**：`https://obsidian.yourdomain.com`
+   - **Database name**：自己起名（如 `my-vault`）
+   - **Username**：`admin`
+   - **Password**：你设置的 CouchDB 密码
+4. 点击 **Test Database Connection** → 成功后点击 **Rebuild Everything**；
+5. 在另一台设备的空 Vault 同样操作，从远端拉取完整笔记库。
 
-## 结语
+---
 
-使用 LiveSync 的初体验绝对能让你感到极度的安全感——因为所有的数据不仅在各端本地有完整的备份历史，还在你的 Homelab 数据库里有增量的记录版图。即使服务器宕机，你也可以把本地的数据拷贝出来。这种不用担心停运且速度超频的“第二大脑”，正是我们坚持自我搭建的美妙之处。
+## 性能与方案对比
+
+| 同步方案                 | 延迟           | 隐私    | 冲突处理  | 费用      |
+| ------------------------ | -------------- | ------- | --------- | --------- |
+| Obsidian Sync（官方）    | < 1 s          | ✅ E2E  | ✅ 自动   | $8/月     |
+| iCloud                   | 1–5 分钟       | ❌ 云端 | ⚠️ 偶冲突 | 免费/订阅 |
+| 坚果云 WebDAV            | 1–10 分钟      | ❌ 云端 | ❌ 手动   | 免费/订阅 |
+| **Self-hosted LiveSync** | **200–500 ms** | ✅ E2E  | ✅ 自动   | **免费**  |
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+**Q：CouchDB 需要多少服务器资源？**
+
+A：CouchDB 本身极轻量，一个个人笔记库（< 10,000 条笔记）的 CouchDB 实例通常只需约 100–200 MB RAM，适合跑在 1 核 1 GB 的轻量 VPS 或家里的 NAS（群晖/威联通）上。
+
+**Q：我的笔记库很大（几 GB 图片），适合 LiveSync 吗？**
+
+A：LiveSync 主要同步 Markdown 文本内容，**不推荐**用于大量图片/附件的同步（CouchDB 存大文件效率不高）。建议图片通过 iCloud 或 Syncthing 同步，仅用 LiveSync 同步纯文本笔记。
+
+**Q：离线编辑后冲突怎么处理？**
+
+A：LiveSync 使用 CouchDB 的 MVCC（多版本并发控制）机制，能自动检测并在插件内以弹窗形式提示你选择保留哪个版本，不会静默覆盖。这比 iCloud 的随机覆盖要友好得多。
+
+**Q：Self-hosted LiveSync 插件活跃维护吗？**
+
+A：是的。插件由 vrtmrz（日本开发者）维护，截至 2026 年 GitHub 上有 4k+ ⭐，更新非常活跃，每 1–2 个月有新版本发布，支持最新版 Obsidian。
+
+**Q：除了 CouchDB，还有其他自建同步方案吗？**
+
+A：有，但体验各有取舍：① **Syncthing**：局域网/跨设备直接文件同步，但延迟高于 LiveSync，且不支持在线冲突合并；② **Remotely Save**（Obsidian 插件）：支持 S3/Backblaze R2/OneDrive，成本低但延迟比 LiveSync 高；③ **Obsidian Git**：用 Git 做版本控制同步，适合纯文本极客但对手机端体验不友好。综合评估，**LiveSync + CouchDB** 仍是隐私 + 实时性 + 成本的最优解。
