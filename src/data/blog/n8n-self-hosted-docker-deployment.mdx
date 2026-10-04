@@ -1,0 +1,374 @@
+---
+title: "从零搭建你的私人 AI 工作室：n8n 自托管完全部署指南（Docker + PostgreSQL + HTTPS）"
+author: "毛佳国"
+pubDatetime: 2026-10-05T08:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - n8n
+  - AI自动化
+  - Docker
+  - Homelab
+  - 运维自动化
+description: "GitHub 206k ⭐ 的自动化神器 n8n，在自己的 VPS 上部署只需 15 分钟。本文提供最完整的生产级配置：Docker Compose + PostgreSQL 持久化 + Nginx HTTPS 反代 + 自动备份，一次配置终身受益。"
+---
+
+import { Tweet, YouTube } from "astro-embed";
+
+> 📌 **核心速览 (TL;DR)**
+>
+> **n8n** 是拥有 206k+ GitHub ⭐ 的开源工作流自动化平台，自托管完全免费。生产级部署三要素：
+>
+> - **数据库**：PostgreSQL 16（替代默认 SQLite，防止高并发损坏）
+> - **反向代理**：Nginx + Let's Encrypt 自动 HTTPS
+> - **加密密钥**：`N8N_ENCRYPTION_KEY` 必须设置且妥善保存（丢失即丢失所有凭据）
+>
+> **最低配置**：2 核 4G VPS + 20G 磁盘；**推荐配置**：4 核 8G（同时跑 Ollama 本地模型）
+
+---
+
+在上一篇 [《2026 年 AI 自动化全景图》](/posts/ai-automation-platform-comparison-2026/) 中，我们确定了 n8n 是"系统集成 + AI 工作流"场景的最佳选择。今天，我们来把它真正跑起来——在你自己的 VPS 上，用生产级的配置，而不是那种用了三天就丢数据的玩具部署。
+
+---
+
+## 为什么需要 PostgreSQL？不用 SQLite 行不行？
+
+n8n 默认使用 SQLite，部署最简单。但 SQLite 有个致命缺陷：**写入时锁表**。当多个工作流同时触发时，SQLite 会出现 `SQLITE_BUSY` 错误，导致任务丢失。
+
+**生产环境必须换 PostgreSQL 的场景**：
+
+- 你有超过 5 个工作流同时运行
+- 你的工作流被 Webhook 高频触发
+- 你在意任务执行记录的完整性
+
+| 对比维度   | SQLite（默认） | PostgreSQL（推荐）   |
+| ---------- | -------------- | -------------------- |
+| 并发写入   | ❌ 单写者锁    | ✅ 多写者 MVCC       |
+| 高可用     | ❌ 不支持      | ✅ 主从复制          |
+| 数据库大小 | 受文件系统限制 | 无上限               |
+| 部署复杂度 | 最简单         | 需额外容器（但值得） |
+| 适合场景   | 个人测试       | 生产环境             |
+
+---
+
+## 第一步：准备服务器环境
+
+### 系统要求
+
+```bash
+# 检查 Ubuntu 版本（推荐 22.04 LTS 或 24.04 LTS）
+lsb_release -a
+
+# 更新系统包
+sudo apt update && sudo apt upgrade -y
+```
+
+### 安装 Docker Engine（官方源，非 snap）
+
+```bash
+# 添加 Docker 官方 GPG 密钥
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+
+# 添加 Docker 官方仓库
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] \
+  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# 安装 Docker Engine 和 Docker Compose 插件
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# 将当前用户加入 docker 组（免 sudo）
+sudo usermod -aG docker $USER
+newgrp docker
+
+# 验证安装
+docker --version && docker compose version
+```
+
+---
+
+## 第二步：生成关键配置值
+
+在写配置文件之前，先生成两个随机密钥（**现在生成，妥善保存，以后无法找回**）：
+
+```bash
+# 生成 PostgreSQL 密码（32 位随机字符）
+openssl rand -hex 16
+# 示例输出：a3f2e8b1c94d6e7f8a9b0c1d2e3f4a5b
+
+# 生成 n8n 加密密钥（用于加密 API 凭据，必须是 32+ 位随机字符串）
+openssl rand -hex 24
+# 示例输出：7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e
+```
+
+> ⚠️ **警告**：`N8N_ENCRYPTION_KEY` 如果丢失，你在 n8n 中存储的所有 API 密钥（Telegram Token、OpenAI Key、数据库密码等）将永远无法解密。请立即存入密码管理器（1Password / Bitwarden）。
+
+---
+
+## 第三步：创建 Docker Compose 配置
+
+```bash
+# 创建 n8n 工作目录
+mkdir -p /opt/n8n && cd /opt/n8n
+```
+
+创建 `compose.yml`（注意：Compose v2 已弃用顶级 `version:` 字段）：
+
+```yaml
+# /opt/n8n/compose.yml
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: n8n-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: n8n
+      POSTGRES_PASSWORD: "your_strong_postgres_password" # 替换为上面生成的密码
+      POSTGRES_DB: n8n
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U n8n -d n8n"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - n8n-net
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: n8n-app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678" # 仅本地监听，外部通过 Nginx 访问
+    environment:
+      # 数据库配置
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=your_strong_postgres_password # 与上面一致
+
+      # 站点配置（替换为你的真实域名）
+      - N8N_HOST=n8n.yourdomain.com
+      - N8N_PROTOCOL=https
+      - N8N_PORT=5678
+      - WEBHOOK_URL=https://n8n.yourdomain.com/
+
+      # 安全配置（必填！）
+      - N8N_ENCRYPTION_KEY=your_random_long_encryption_key # 替换为上面生成的密钥
+
+      # 性能与存储配置
+      - EXECUTIONS_DATA_MAX_AGE=168 # 自动清理 7 天前的执行记录（单位：小时）
+      - EXECUTIONS_DATA_PRUNE_MAX_COUNT=10000 # 最多保留 10000 条执行记录
+      - N8N_METRICS=true # 启用 Prometheus 指标端点
+
+      # 时区
+      - GENERIC_TIMEZONE=Asia/Shanghai
+      - TZ=Asia/Shanghai
+    volumes:
+      - n8ndata:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - n8n-net
+
+networks:
+  n8n-net:
+    driver: bridge
+
+volumes:
+  pgdata:
+  n8ndata:
+```
+
+---
+
+## 第四步：启动 n8n
+
+```bash
+cd /opt/n8n
+
+# 后台启动（-d 静默模式）
+docker compose up -d
+
+# 查看启动日志（等待约 30 秒看到 n8n 启动成功的日志）
+docker compose logs -f n8n
+```
+
+你应该看到类似输出：
+
+```
+n8n-app  | n8n ready on 0.0.0.0, port 5678
+n8n-app  | Version: 1.75.0
+n8n-app  | Encryption key: ****
+```
+
+---
+
+## 第五步：Nginx 反向代理 + HTTPS
+
+### 安装 Nginx 和 Certbot
+
+```bash
+sudo apt install -y nginx certbot python3-certbot-nginx
+```
+
+### 创建 Nginx 配置
+
+```bash
+sudo nano /etc/nginx/sites-available/n8n
+```
+
+```nginx
+server {
+    listen 80;
+    server_name n8n.yourdomain.com;
+
+    # n8n 需要支持 WebSocket（工作流实时推送用）
+    location / {
+        proxy_pass         http://127.0.0.1:5678;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host $host;
+        proxy_set_header   X-Real-IP $remote_addr;
+        proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+
+        # 超时配置（长时间运行的工作流需要）
+        proxy_read_timeout  600s;
+        proxy_send_timeout  600s;
+        proxy_connect_timeout 75s;
+    }
+}
+```
+
+```bash
+# 启用站点
+sudo ln -s /etc/nginx/sites-available/n8n /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+
+# 申请 Let's Encrypt 证书（自动配置 HTTPS）
+sudo certbot --nginx -d n8n.yourdomain.com
+```
+
+现在访问 `https://n8n.yourdomain.com` 即可看到 n8n 的设置页面！
+
+---
+
+## 第六步：初始化配置
+
+首次访问时，n8n 会引导你：
+
+1. **创建管理员账号**：设置 Email 和密码（这是 n8n 的登录账号，与服务器账号无关）
+2. **社区版激活**：免费版无需激活码，直接跳过
+3. **界面语言**：设置为中文（Settings → General → Language: 中文）
+
+---
+
+## 第七步：配置自动备份（重要！）
+
+**n8n 有两类数据需要备份**：
+
+1. **PostgreSQL 数据库**：包含所有工作流定义、执行历史、凭据（已加密）
+2. **n8n 配置目录**（`n8ndata` Volume）：包含 `config` 文件（含加密密钥路径）
+
+### 每日自动备份脚本
+
+```bash
+# 创建备份脚本
+sudo nano /opt/n8n/backup.sh
+```
+
+```bash
+#!/bin/bash
+# n8n 每日备份脚本
+set -e
+
+BACKUP_DIR="/opt/n8n/backups"
+DATE=$(date +%Y%m%d_%H%M%S)
+RETENTION_DAYS=7
+
+mkdir -p "$BACKUP_DIR"
+
+echo "[$DATE] 开始备份 n8n..."
+
+# 1. 备份 PostgreSQL 数据库
+docker exec n8n-postgres pg_dump \
+  -U n8n \
+  -d n8n \
+  --no-password \
+  -Fc \
+  > "$BACKUP_DIR/n8n_db_$DATE.dump"
+
+# 2. 备份 n8n 工作流配置（导出 JSON）
+docker exec n8n-app n8n export:workflow \
+  --all \
+  --output="/home/node/.n8n/workflows_backup_$DATE.json" 2>/dev/null || true
+
+# 3. 清理超过保留期的旧备份
+find "$BACKUP_DIR" -name "*.dump" -mtime +$RETENTION_DAYS -delete
+
+echo "[$DATE] 备份完成：$BACKUP_DIR/n8n_db_$DATE.dump"
+```
+
+```bash
+chmod +x /opt/n8n/backup.sh
+
+# 添加 Cron 定时任务（每天凌晨 3 点执行）
+(crontab -l 2>/dev/null; echo "0 3 * * * /opt/n8n/backup.sh >> /var/log/n8n-backup.log 2>&1") | crontab -
+```
+
+---
+
+## 常用运维命令速查
+
+```bash
+# 查看运行状态
+docker compose -f /opt/n8n/compose.yml ps
+
+# 查看实时日志
+docker compose -f /opt/n8n/compose.yml logs -f n8n
+
+# 重启 n8n（不重启数据库）
+docker compose -f /opt/n8n/compose.yml restart n8n
+
+# 升级 n8n 到最新版
+docker compose -f /opt/n8n/compose.yml pull n8n
+docker compose -f /opt/n8n/compose.yml up -d n8n
+
+# 进入 n8n 容器调试
+docker exec -it n8n-app sh
+
+# 手动导出所有工作流（迁移用）
+docker exec n8n-app n8n export:workflow --all --pretty --output=/home/node/.n8n/all-workflows.json
+```
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+**Q：启动后访问 n8n 显示 502 Bad Gateway 怎么办？**
+
+A：依次排查：① 检查 n8n 容器是否正常运行 `docker ps | grep n8n`；② 查看 n8n 启动日志 `docker compose logs n8n | tail -20`；③ 确认 PostgreSQL 健康检查通过 `docker inspect n8n-postgres | grep Status`；④ 检查 Nginx 配置语法 `sudo nginx -t`。最常见原因是 PostgreSQL 还没就绪，n8n 就提前退出了，稍等 30 秒再试。
+
+**Q：`N8N_ENCRYPTION_KEY` 我忘记保存了，能找回吗？**
+
+A：无法找回，也无法重置。这个密钥是用来加密所有凭据（API Key、密码等）的，丢失后你在 n8n 中存储的所有凭据都无法解密，必须重新输入。**如果你还能访问旧实例，立即去 `/opt/n8n/compose.yml` 里查看** `N8N_ENCRYPTION_KEY` 的值并备份到密码管理器。
+
+**Q：如何迁移 n8n 到新服务器？**
+
+A：三步走：① 在新服务器按本文重新部署 n8n，使用**相同的** `N8N_ENCRYPTION_KEY` 和 `POSTGRES_PASSWORD`；② 在旧服务器执行 `pg_dump` 导出数据库；③ 在新服务器通过 `pg_restore` 导入。关键：`N8N_ENCRYPTION_KEY` 必须与旧实例完全一致，否则凭据无法解密。
+
+**Q：n8n 的 Webhook 在国内服务器接收不到 GitHub/Telegram 的请求怎么办？**
+
+A：这是网络连通性问题，不是 n8n 的问题。解决方案：① 将 n8n 部署在境外 VPS（推荐）；② 在国内 VPS 部署 n8n，通过 Cloudflare Tunnel 暴露 Webhook 端点（参考本站文章 [《Cloudflare Tunnel 内网穿透》](/posts/cloudflare-tunnel-intro/)）。
+
+**Q：n8n 支持多用户吗？能给团队用吗？**
+
+A：社区版（自托管免费版）支持多用户，可以在 Settings → Users 中邀请团队成员，并分配不同角色（Admin / Member / Viewer）。高级 RBAC 权限控制需要付费的 Enterprise 版本。
