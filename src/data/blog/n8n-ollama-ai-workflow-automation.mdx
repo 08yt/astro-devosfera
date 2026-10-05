@@ -1,0 +1,226 @@
+---
+title: "n8n + Ollama 打造零成本 AI 工作流：自动总结、定时推送与私有知识库问答 (2026版)"
+author: "毛佳国"
+pubDatetime: 2026-10-06T09:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - n8n
+  - Ollama
+  - AI自动化
+  - 工作流
+  - Homelab
+description: "拒绝为商业 LLM API 充值！教你如何将自建的 n8n 与本地 Ollama (Qwen 2.5 / DeepSeek-R1) 深度打通，构建早报摘要、GitHub 监控报警与企业级 RAG 问答三大生产级自动化闭环。"
+---
+
+import { Tweet, YouTube } from "astro-embed";
+
+> 📌 **核心速览 (TL;DR)**
+>
+> - **零 API 成本**：将 n8n 的 @n8n/n8n-nodes-langchain 基础 AI 节点接入本地 Ollama，免去 OpenAI/Anthropic 的 Token 扣费账单。
+> - **容器互通架构**：在同一 Docker 宿主机下，n8n 容器通过宿主机网关 `http://host.docker.internal:11434` 或加入同一 Docker Bridge 网络直接访问 Ollama。
+> - **三大落地案例**：每日技术 RSS 自动研读并推送到 Telegram / Discord、GitHub Issue 紧急安全告警与自动打标、结合 Qdrant/Chroma 向量数据库的本地文档问答机器人。
+> - **推荐模型选型 (2026)**：日常结构化提取与摘要推荐 **Qwen 2.5 7B/14B**；逻辑严密的代码/排错推荐 **DeepSeek-R1-Distill-Qwen-14B**。
+
+---
+
+在上一篇教程 [《从零搭建你的私人 AI 工作室：n8n 自托管完全部署指南》](/posts/n8n-self-hosted-docker-deployment/) 中，我们已经在 VPS 或内网服务器上成功跑通了基于 PostgreSQL 存储的生产级 n8n。
+
+但是，许多朋友在搭建完 n8n 尝试体验官方的 AI Agent 节点时，往往卡在了第一步：需要填入 OpenAI、Anthropic 或者 Google Gemini 的 API Key。对于很多跑在内网 Homelab 里的数据处理管道，或者每天需要调用成千上万次的高频爬虫任务来说，**按 Token 计费的云端 API 不仅容易破产，还将个人敏感数据暴露给了商业云端**。
+
+今天，我们将利用之前在 Homelab 里部署的 **Ollama**（详见 [《在 Homelab 中部署 Ollama 与 Open WebUI 全指南》](/posts/ollama-local-llm-homelab-guide/)），手把手教你把本地大模型与 n8n 无缝焊接在一起，打造 100% 私有、零边际成本的自动化流水线！
+
+---
+
+## 一、网络拓扑：让 Docker 里的 n8n 连上宿主机的 Ollama
+
+许多新手在配置 n8n 连 Ollama 时遇到的第一个报错就是：`ECONNREFUSED 127.0.0.1:11434`。这是典型的 Docker 容器网络隔离认知误区。
+
+### 1. 为什么 `localhost:11434` 连不上？
+
+n8n 运行在独立的 Docker 容器内，容器里的 `127.0.0.1` 指向的是 n8n 容器自身，而不是你的服务器宿主机。而 Ollama 默认监听在宿主机的 `11434` 端口。
+
+### 2. 标准解法一：统一加入 Docker 内部网络 (推荐)
+
+如果你同时使用 Docker 部署 Ollama 和 n8n，最干净的做法是在 `docker-compose.yml` 中将它们连接到同一个自定义网络：
+
+```yaml
+# /opt/n8n/compose.yml
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    networks:
+      - ai-pipeline-net
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    volumes:
+      - /opt/ollama:/root/.ollama
+    # 若有显卡需添加 deploy.resources.reservations.devices
+    networks:
+      - ai-pipeline-net
+
+networks:
+  ai-pipeline-net:
+    name: ai-pipeline-net
+```
+
+在这个网络下，n8n 访问 Ollama 的 Base URL 直接填写容器名即可：
+👉 `http://ollama:11434`
+
+### 3. 标准解法二：通过 `host.docker.internal` 访问宿主机 Ollama
+
+如果你的 Ollama 是原生跑在宿主机（或者另一台配有高性能显卡的内网 PC 上）：
+
+在 n8n 容器的配置中添加 `extra_hosts`：
+
+```yaml
+services:
+  n8n:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+```
+
+此时在 n8n 的 Ollama 节点中，Base URL 填入：
+👉 `http://host.docker.internal:11434`
+
+> ⚠️ **注意**：宿主机原生的 Ollama 必须允许外部访问。在 Linux 上，需通过 `systemctl edit ollama.service` 增加环境变量 `Environment="OLLAMA_HOST=0.0.0.0"`，并执行 `systemctl restart ollama`。
+
+---
+
+## 二、配置 n8n 的 Ollama 凭据
+
+1. 打开 n8n 控制台，进入 **Credentials (凭据)** -> **Add Credential**。
+2. 搜索并选择 **Ollama**。
+3. 填入配置参数：
+   - **Base URL**: `http://host.docker.internal:11434` 或 `http://ollama:11434`
+4. 点击 **Save** 并进行连接测试，出现绿色对勾即代表打通！
+
+---
+
+## 三、实战案例一：技术早报/资讯自动化研读与分发
+
+每天早上各大技术社区（Hacker News、GitHub Trending、少数派、各类技术 RSS）信息泛滥，人工刷非常浪费时间。我们设计一条自动化链路：**抓取 -> 过滤 -> Qwen 本地模型精读总结 -> Telegram 格式化推送**。
+
+### 工作流拓扑架构
+
+```
+[Schedule Trigger (每天早上 08:00)]
+   │
+   ▼
+[RSS Read 节点 (抓取订阅源内容)]
+   │
+   ▼
+[Item Lists (去重并截取最新 5 条)]
+   │
+   ▼
+[Ollama Model (qwen2.5:7b-instruct-q4_K_M)]
+   │ Prompt: "你是一个资深架构师，请用 3 句话总结以下文章核心价值..."
+   ▼
+[Markdown 格式组装]
+   │
+   ▼
+[Telegram 发送消息到专属频道]
+```
+
+### 关键 System Prompt 设定
+
+在 **Basic LLM Chain** 或 **AI Agent** 节点的 Prompt 设置中：
+
+```text
+你是一个专业技术自媒体编辑。请仔细阅读输入的文章内容，提取出关键信息并严格按照以下 Markdown 模板输出：
+
+📌 【标题】：[简短有吸引力的中文标题]
+💡 【核心亮点】：
+- 亮点 1
+- 亮点 2
+- 亮点 3
+🎯 【评价与启发】：[一句话评价该项目或技术]
+
+禁止输出任何多余寒暄，直接输出上述模板。
+```
+
+本地部署的 Qwen 2.5 7B 在处理中文技术术语时表现极佳，平均每条长文总结耗时仅 1.5–3 秒（RTX 3060 12G 环境），每天完全自主运行，彻底解放你的信息摄入焦虑！
+
+---
+
+## 四、实战案例二：GitHub 仓库 Issue 智能分拣与自动告警
+
+作为开源项目维护者或 DevOps 工程师，生产环境监控报警或 GitHub Issue 如果全量推到群里，会引发严重的“警报疲劳”。我们可以让本地 LLM 充当“初审小秘书”。
+
+### 工作流逻辑
+
+1. **Webhook 节点**：接收来自 GitHub 的 `issues.opened` 事件。
+2. **Code 节点**：提取 Issue 标题、作者与 Body 描述。
+3. **Ollama / DeepSeek-R1-Distill**：
+   - 输入 Prompt：“分析此 issue 是否为高危 Bug、崩溃或安全漏洞？输出 JSON 格式 `{"severity": "HIGH|MEDIUM|LOW", "category": "BUG|FEATURE|DOCS", "reason": "简述"}`”。
+4. **Switch 分流节点**：
+   - 若 `severity == 'HIGH'`：立即触发 Telegram Bot 紧急强提醒，并向工程师手机发 Pushover 震动推送；
+   - 若为普通问题：静默写入内网 Notion / Obsidian 待办日志中。
+
+得益于本地模型不受 API 速率限制（Rate Limit）的特性，即使突然有黑客扫描脚本涌入提交了上百个 Issue，也不会产生天价账单或触发 API 限流。
+
+---
+
+## 五、实战案例三：结合向量数据库构建本地文档 RAG 问答
+
+如果只用基础模型，模型无法了解你的私有配置文件、公司 SOP 或个人账单。在 n8n 中，我们可以利用内置的 **Vector Store 节点**（如 Qdrant / Chroma / In-Memory）实现真正的私有 RAG 闭环。
+
+### 关键组件搭配
+
+| 组件类型              | 节点名称            | 推荐本地配置 (2026)                   |
+| :-------------------- | :------------------ | :------------------------------------ |
+| **LLM 生成器**        | Ollama Chat Model   | `qwen2.5:14b-instruct`                |
+| **Embeddings 向量化** | Embeddings Ollama   | `bge-m3:latest` 或 `nomic-embed-text` |
+| **向量存储**          | Qdrant Vector Store | 自建 Qdrant 容器 (端口 6333)          |
+| **检索工具**          | Vector Store Tool   | 挂载到 AI Agent 作为知识库工具        |
+
+### 交互过程
+
+1. 用户在 Telegram 发送问题：“我们机房 3 号服务器的 Sing-box 监听端口是多少？”
+2. n8n 的 **AI Agent** 判断需要查询内部资料，自动调用 **Vector Store Tool**。
+3. **Embeddings Ollama** 使用本地 `bge-m3` 将问题转化为高维向量，在 Qdrant 中通过余弦相似度匹配出对应的服务器拓扑 Markdown 文档切片。
+4. Qdrant 返回文档内容片段给 Agent。
+5. **Qwen 2.5** 整合私有上下文后，生成精准答复返回给用户。
+
+所有文档数据自始至终没有离开你的局域网内网，真正做到了企业级的隐私安全！
+
+---
+
+## 六、生产环境性能调优与避坑指南
+
+### 1. 并发请求排队问题
+
+本地 GPU 的显存是有限的。Ollama 默认最多同时处理的上下文窗口和请求数由环境变量决定。
+如果 n8n 触发了批量任务（例如一次性抓了 50 篇 RSS 同时扔给 Ollama），会导致 GPU 显存爆满甚至 OOM 崩溃。
+
+**解决方案**：
+
+- 在 n8n 中使用 **Split In Batches 节点**，设置 Batch Size 为 1 或 2，单线程串行处理；
+- 为 Ollama 设置环境变量 `OLLAMA_NUM_PARALLEL=2` 和 `OLLAMA_MAX_QUEUE=512`，让 Ollama 内部有序排队，防止过载。
+
+### 2. 避免大模型超时 (Timeout)
+
+某些较长文档使用 14B 模型处理时，如果机器配置较低可能耗时超过 60 秒。
+在 n8n 的 HTTP / Ollama 节点高级设置中，将 **Timeout** 从默认的 30000ms（30 秒）调大至 120000ms（2 分钟）。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+**Q：没有英伟达独立显卡，纯 CPU 能跑这套工作流吗？**
+
+A：完全可以！Ollama 在现代支持 AVX-512 指令集的 CPU 上推理表现相当不错。如果纯 CPU 运行，强烈推荐选型 **Qwen 2.5 1.5B 或 7B 的 Q4_K_M 量化版本**，单次文本摘要通常在 5–10 秒内即可完成，对于后台异步执行的自动化工作流来说，完全感知不到延迟。
+
+**Q：n8n 连本地 Ollama 报错 `connect ECONNREFUSED`，但宿主机 `curl 127.0.0.1:11434` 正常？**
+
+A：检查三点：① n8n 配置里必须用 `host.docker.internal` 而不是 `127.0.0.1`；② 检查 Linux 宿主机的 `ollama.service` 是否配置了 `OLLAMA_HOST=0.0.0.0`（默认只监听 127.0.0.1 导致容器无法从外部访问）；③ 检查宿主机 UFW 防火墙是否拦截了 Docker 网桥的流量。
+
+**Q：n8n 自带的 AI Agent 节点和 LangChain 自写代码比，有什么优劣？**
+
+A：n8n 的核心优势是**可视化、自带触发器生态和极低维护成本**。你不需要为定时任务、错误重试、Webhook 路由写几百行 Python 代码。只有当你的 Agent 需要极其复杂的动态递归状态机、或者微秒级的极端性能要求时，才需要考虑手写 LangGraph。
+
+**Q：本地 Embedding 推荐哪个模型？**
+
+A：推荐国内北京智源开源的 **`bge-m3`**。它原生支持多语言、长文本（8192 上下文），且对中文语义向量检索的准确率目前处于开源顶尖水准。直接在终端执行 `ollama run bge-m3` 即可下载就绪。
