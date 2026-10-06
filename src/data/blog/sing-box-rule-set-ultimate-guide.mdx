@@ -20,10 +20,10 @@ description: "详解 Sing-box 签名核心技术：二进制规则集（Rule Set
 > [!NOTE]
 > **📌 核心速览（TL;DR / 快问快答）：**
 >
-> - **二进制格式**：统一采用 `"format": "binary"` 配合 `.srs` 文件，省内存、抗抖动、秒级启动。
+> - **二进制格式**：统一采用 `"format": "binary"` 配合 `.srs` 文件，省内存、抗抖动、秒级启动。完整全量配置示例见 [《Sing-box 高效配置与出站路由全解析实战》](/posts/sing-box-full-configuration-combat-2026/)。
 > - **下载绕行铁律**：`remote` 规则集必须配置 `"download_detour": "proxy"`，确保 GitHub Raw 规则更新不受防火墙干扰。
 > - **自动更新**：设置 `"update_interval": "1d"` 实现每日静默重载，免去人工维护。
-> - **本地编译指令**：`sing-box rule-set compile source.json -o target.srs`。
+> - **本地编译指令**：`sing-box rule-set compile source.json -o target.srs`，详细手工编译流程见 [《自定义规则集 (.srs) 编译与使用进阶教程》](/posts/sing-box-srs-ruleset-compilation/)。
 
 ---
 

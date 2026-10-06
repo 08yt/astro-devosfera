@@ -22,9 +22,9 @@ description: "Sing-box 配置太难？全网最详尽的 Sing-box 2026 生产级
 > [!NOTE]
 > **📌 核心速览（TL;DR / 快问快答）：**
 >
-> - **数据流转四大核心**：**Inbounds**（流量入口 TUN/SOCKS5）-> **DNS**（防污染解析管道）-> **Route**（SRS 规则调度）-> **Outbounds**（VLESS-Reality / Hysteria 2 出口）。
-> - **防泄露铁律**：境外 DNS 必须指定 `"detour": "proxy"`，确保 DNS 查询在加密隧道内完成；本地直连走公网 DNS 并直通网卡。
-> - **2026 规则规范**：全面采用二进制 `.srs` 规则集 (`rule_set: ["geosite-cn"]`) 与 uTLS 浏览器指纹 (`fingerprint: "chrome"`)。
+> - **数据流转四大核心**：**Inbounds**（流量入口 TUN/SOCKS5）-> **DNS**（防污染解析管道）-> **Route**（SRS 规则调度）-> **Outbounds**（VLESS-Reality / Hysteria 2 出口）。初学者建议先读 [《2026年最新 Sing-box 全平台小白完美入门指南》](/posts/sing-box-beginner-guide/)。
+> - **防泄露铁律**：境外 DNS 必须指定 `"detour": "proxy"`，确保 DNS 查询在加密隧道内完成；本地直连走公网 DNS 并直通网卡，深度原理参考 [《深入浅出 Sing-box 的 DNS 机制与 FakeIP 防污染》](/posts/sing-box-dns-rules-and-fakeip-deep-dive/)。
+> - **2026 规则规范**：全面采用二进制 `.srs` 规则集 (`rule_set: ["geosite-cn"]`) 与 uTLS 浏览器指纹 (`fingerprint: "chrome"`)，规则集配置实操请查阅 [《性能狂飙：2026 最新 Sing-box Rule Set 配置与自动更新全攻略》](/posts/sing-box-rule-set-ultimate-guide/) 与 [《自定义规则集 (.srs) 编译与使用进阶教程》](/posts/sing-box-srs-ruleset-compilation/)。
 
 ---
 

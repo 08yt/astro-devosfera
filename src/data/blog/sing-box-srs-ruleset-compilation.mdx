@@ -23,7 +23,7 @@ description: "Sing-box 彻底摒弃了传统 .dat 格式，全面拥抱高效率
 > - **二进制优势**：`.srs` 体积极小（仅为 JSON 的 1/5），由 Sing-box 原生解析，百万级域名匹配耗时低于 1ms。
 > - **一键编译指令**：`sing-box rule-set compile ./rules.json -o rules.srs`。
 > - **反编译校验指令**：`sing-box rule-set decompile ./rules.srs -o rules.json`。
-> - **配置声明规范**：在 `route.rule_set` 中声明 `"format": "binary"`，并在 `rules` 中通过 `"rule_set": ["custom-rules"]` 引用。
+> - **配置声明规范**：在 `route.rule_set` 中声明 `"format": "binary"`，并在 `rules` 中通过 `"rule_set": ["custom-rules"]` 引用。日常生产级规则集引用模板与自动更新方法详见 [《性能狂飙：2026 最新 Sing-box Rule Set 配置与自动更新全攻略》](/posts/sing-box-rule-set-ultimate-guide/) 与 [《Sing-box 高效配置与出站路由全解析实战》](/posts/sing-box-full-configuration-combat-2026/)。
 
 ---
 

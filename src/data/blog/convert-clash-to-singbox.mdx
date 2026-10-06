@@ -17,8 +17,8 @@ description: "老牌机场没有提供 Sing-box 纯 JSON 订阅怎么办？本�
 > [!NOTE]
 > **📌 核心速览（TL;DR / 快问快答）：**
 >
-> - **转换原理**：利用 Subconverter 解析器拉取旧版 Clash YAML，将其中的出站节点（IP、端口、UUID、uTLS 指纹）重构为 Sing-box 的 `outbounds` 模块。
-> - **小白推荐**：使用开源 2026 GUI 工具 **Mihomo Party** 或 **Hiddify Next**，直接粘贴 Clash 链接自动完成 Sing-box 内核转换。
+> - **转换原理**：利用 Subconverter 解析器拉取旧版 Clash YAML，将其中的出站节点（IP、端口、UUID、uTLS 指纹）重构为 Sing-box 的 `outbounds` 模块。标准出站结构参考 [《Sing-box 高效配置与出站路由全解析实战》](/posts/sing-box-full-configuration-combat-2026/)。
+> - **小白推荐**：使用开源 2026 GUI 工具 [《Mihomo Party 与 Sing-box GUI 对决选型》](/posts/mihomo-party-vs-sing-box-gui/) 或 **Hiddify Next**，直接粘贴 Clash 链接自动完成 Sing-box 内核转换；初学者快速上手见 [《2026年最新 Sing-box 全平台小白完美入门指南》](/posts/sing-box-beginner-guide/)。
 > - **隐私安全**：若订阅包含敏感专线节点，建议使用 Docker 本地自建 Subconverter 后端，防范第三方 API 泄露。
 
 ---
