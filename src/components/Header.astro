@@ -2,7 +2,6 @@
 import IconMoon from "@/assets/icons/IconMoon.svg";
 import IconSearch from "@/assets/icons/IconSearch.svg";
 import IconArchive from "@/assets/icons/IconArchive.svg";
-import IconGallery from "@/assets/icons/IconGallery.svg";
 import IconSunHigh from "@/assets/icons/IconSunHigh.svg";
 import Logo from "@/assets/logo/devosfera.svg";
 import LinkButton from "./LinkButton.astro";
@@ -148,24 +147,6 @@ const isActive = (path: string) => {
               </li>
             )
           }
-          {
-            SITE.showGalleries && (
-              <li>
-                <LinkButton
-                  href="/galleries/"
-                  class:list={[
-                    "nav-link",
-                    { "nav-active": isActive("/galleries/") },
-                  ]}
-                  title="图集"
-                  aria-label="galleries"
-                >
-                  <IconGallery class="hidden sm:inline-block" />
-                  <span class="sm:sr-only">图集</span>
-                </LinkButton>
-              </li>
-            )
-          }
 
           <!-- Separator -->
           <li class="flex items-center px-1" aria-hidden="true">
@@ -283,21 +264,6 @@ const isActive = (path: string) => {
                 >
                   <span class="mobile-nav-indicator" />
                   <span>归档</span>
-                </a>
-              )
-            }
-            {
-              SITE.showGalleries && (
-                <a
-                  href="/galleries/"
-                  class:list={[
-                    "mobile-nav-link",
-                    { active: isActive("/galleries/") },
-                  ]}
-                  style="--i:4"
-                >
-                  <span class="mobile-nav-indicator" />
-                  <span>图集</span>
                 </a>
               )
             }
