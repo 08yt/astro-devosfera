@@ -2,51 +2,94 @@
 title: "VPS 主机从零部署 Sing-box 节点服务端实战（支持 VLESS+Reality）"
 author: "毛佳国"
 pubDatetime: 2026-03-08T16:20:00.000+08:00
-featured: false
+modDatetime: 2026-10-12T23:00:00.000+08:00
+featured: true
 draft: false
 tags:
   - 服务器搭建
-  - VLESS
-  - 极客探索
-description: "教用户如何在海外 VPS 服务器上手动部署 Sing-box 服务端环境。基于 2026 最新标准配置 VLESS-Reality 抗封锁节点，手把手提供 Docker Compose 极速建站与密钥生成实战。"
+  - 新协议
+  - Sing-box
+description: "2026 最新标准：在海外 VPS 上从零部署 Sing-box 服务端，配置 VLESS-Reality 抗封锁节点。含 VPS 选购要点、密钥生成、安全加固、双协议扩展与日常运维全流程。"
 ---
 
-在如今的网络环境下，老旧的协议（如 Shadowsocks、VMess 等）很容易被防火墙（GFW）根据流量特征识别阻断。
+在如今的网络环境下，老旧的协议（如 Shadowsocks、VMess 等）很容易被防火墙根据流量特征识别阻断。
 
-而 **VLESS-Reality** 因为其独特的“借用真实 TLS 1.3 握手证书”的设计，消除了自签 SSL 证书的特征漏洞，成为了目前抗封锁能力极强的前沿协议。本篇文章教你如何使用 **Sing-box** 作为服务端核心在海外 VPS 上部署它。
+而 **VLESS-Reality** 因为其独特的"借用真实 TLS 1.3 握手证书"的设计，消除了自签 SSL 证书的特征漏洞，成为了目前抗封锁能力极强的前沿协议。本篇文章教你如何使用 **Sing-box** 作为服务端核心在海外 VPS 上部署它 —— 从选购 VPS 到节点上线，全流程打通。
 
 > [!NOTE]
 > **📌 核心速览（TL;DR / 快问快答）：**
 >
-> - **核心协议**：VLESS + Reality（传输层为 TCP，借用公网合规域名如 `images.apple.com`）。
-> - **流控规范**：Sing-box 服务端与客户端流控必须指定为 `"flow": "xtls-r-flow"`。
+> - **核心协议**：VLESS + Reality（传输层为 TCP，借用公网合规域名如 `images.apple.com` 做 TLS 伪装）。
+> - **流控规范**：Sing-box 服务端与客户端流控必须一致指定为 `"flow": "xtls-r-flow"`（2026 标准）。
 > - **部署推荐**：优先采用 Docker Compose + `network_mode: host` 部署，兼顾安全性与超高转发吞吐。
+> - **本文定位**：服务端搭建总纲。客户端配置见 [《Sing-box 高效配置与出站路由全解析》](/posts/sing-box-full-configuration-combat-2026/)，新手先读 [《全平台小白完美入门指南》](/posts/sing-box-beginner-guide/)。
 
 ---
 
-## 🛠️ 第一步：环境准备与 Docker 安装
+## 🤔 一、为什么要自建节点？自建 vs 机场
 
-你需要拥有一台海外云主机（VPS）并拥有一台主流 Linux 操作系统（推荐 **Debian 12** 或 **Ubuntu 24.04**）。
+| 维度 | 自建 VPS 节点 | 机场订阅 |
+| :--- | :--- | :--- |
+| **IP 独享性** | 🏆 一人独享，干净 | 多人共用，IP 易被流媒体拉黑 |
+| **隐私** | 🏆 流量只经过自己的服务器 | 需信任服务商 |
+| **成本** | 年付 VPS 约 $30-60 | 月付 $5-15，年付相当 |
+| **维护成本** | 需自己运维、更新 | 🏆 零运维 |
+| **适合人群** | 极客、长期用户 | 新手、怕折腾 |
 
-通过 SSH 登录 VPS 终端并快速安装 Docker 运行环境：
+**结论**：想长期稳定 + IP 干净，学完本篇自建；想省心，直接看 [《"饿饭CC云"深度评测》](/posts/efan-cc-cloud-review/)。
+
+---
+
+## 🛒 二、VPS 选购要点（3 分钟避坑）
+
+自建节点 70% 的体验取决于 VPS 本身，记住四要素：
+
+1. **线路**：中国电信 **CN2 GIA**、联通 **AS9929** 回程优先，晚高峰不卡；
+2. **IP 纯净度**：下单后第一时间查 IP 是否被 Netflix/ChatGPT 拉黑，黑了就换 IP（多数商家支持工单更换）；
+3. **带宽**：1Gbps 共享带宽起步，注意"流量"与"带宽"是两回事；
+4. **商家**：DMIT、搬瓦工、CloudCone 口碑较稳。
+
+详细横评见 [《2026 国外 VPS 选购与回程线路评测避坑指南》](/posts/vps-buying-guide-2026/)。
+
+---
+
+## 🔬 二之一、Reality 原理 60 秒：为什么它封不掉？
+
+传统 TLS 代理需要你自己申请证书 —— 证书是自签的，防火墙一眼就能认出来。而 Reality 玩的是"借壳"：
+
+1. 你选一个真实存在的大网站（如 `images.apple.com`）做伪装目标；
+2. 客户端连接时，TLS 握手**看起来**就是在访问苹果官网；
+3. 只有握手中携带正确密钥的客户端，服务端才会"露出真容"建立代理通道；
+4. 防火墙主动探测时，服务端直接把流量转发给真正的苹果服务器 —— 探测者看到的就是一个正常网站。
+
+**一句话：没有自己的证书，就没有证书特征可查。** 这也是 Reality 成为 2026 年抗封锁首选的原因。协议演进史见 [《从 Shadowsocks 到 VLESS-Reality 的协议演进史》](/posts/proxy-protocol-evolution-history/)。
+
+---
+
+## 🖥️ 三、环境准备
+
+你需要一台海外 VPS，系统推荐 **Debian 12** 或 **Ubuntu 24.04**（社区文档最全，Docker 兼容性最好）。
+
+通过 SSH 登录后，先安装 Docker：
 
 ```bash
 curl -fsSL https://get.docker.com -o get-docker.sh
 sh get-docker.sh
 ```
 
+> 💡 本篇全程用 Docker 部署：环境隔离、升级只需换镜像、不污染宿主机，是 2026 年的主流姿势。
+
 ---
 
-## 🛠️ 第二步：编写 Sing-box 服务端 `config.json`
+## ⚙️ 四、编写服务端 `config.json`
 
-在 VPS 宿主机创建配置目录 `/etc/sing-box/`：
+在 VPS 创建配置目录：
 
 ```bash
-mkdir -p /etc/sing-box
-cd /etc/sing-box
+mkdir -p /etc/sing-box && cd /etc/sing-box
 ```
 
-创建服务端配置文件 `config.json`：
+创建 `config.json`。注意服务端是客户端的"镜像"：客户端 `outbounds` 里的节点信息，必须和这里 `inbounds` 的用户配置一一对应：
 
 ```json
 {
@@ -62,7 +105,7 @@ cd /etc/sing-box
       "listen_port": 443,
       "users": [
         {
-          "uuid": "your-uuid-here", // 填入随机生成的 UUID
+          "uuid": "your-uuid-here", // 用 uuidgen 随机生成
           "flow": "xtls-r-flow" // 2026 正确流控规范
         }
       ],
@@ -75,8 +118,8 @@ cd /etc/sing-box
             "server": "images.apple.com", // 握手目标回源地址
             "server_port": 443
           },
-          "private_key": "your-private-key-here", // 使用 sing-box generate reality-keypair 生成
-          "short_id": ["your-short-id-1"] // 自定义 short_id 字符串
+          "private_key": "your-private-key-here", // 下一步生成
+          "short_id": ["your-short-id-1"]
         }
       }
     }
@@ -90,28 +133,37 @@ cd /etc/sing-box
 }
 ```
 
+**关键参数讲解**：
+
+- `listen: "::"`：同时监听 IPv4 和 IPv6；
+- `handshake.server`：Reality 的精髓 —— 防火墙主动探测时，服务器会把流量转发给这个真实网站（如苹果 CDN），表现得和正常网站一模一样；
+- `short_id`：客户端用来标识自己的短 ID，可自定义，服务端配置后客户端必须一致；
+- 服务端 `outbounds` 只需要 `direct`：服务端本身不做分流，收到什么发什么。
+
+Reality 的 SNI 筛选与防主动探测进阶见 [《Reality 防封锁黑魔法》](/posts/sing-box-vless-reality-sni-guide/)。
+
 ---
 
-## 🔑 第三步：生成 Reality 秘钥对
+## 🔑 五、生成 Reality 密钥对
 
-使用 Docker 临时生成一对唯一的 Reality 秘钥（`PrivateKey` 与 `PublicKey`）：
+用 Docker 临时生成一对 Reality 密钥（`PrivateKey` 与 `PublicKey`）：
 
 ```bash
 docker run --rm ghcr.io/sagernet/sing-box:latest generate reality-keypair
 ```
 
-终端会输出如下格式的内容：
+终端会输出：
 
-- `PrivateKey`: `xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
-- `PublicKey`: `yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy`
+- `PrivateKey`: `xxxx…` → 填入服务端 `config.json` 的 `private_key` 字段；
+- `PublicKey`: `yyyy…` → 妥善记录，填入**客户端**配置的 `reality.public_key` 字段。
 
-将 `PrivateKey` 填入服务端 `/etc/sing-box/config.json` 的 `private_key` 字段；将 `PublicKey` 妥善记录，用于后续客户端配置。
+UUID 用 `uuidgen`（Linux 自带）或在线工具生成，**每个用户独立一个**，不要共用。
 
 ---
 
-## 🚀 第四步：使用 Docker Compose 一键启动
+## 🚀 六、Docker Compose 一键启动
 
-在 `/etc/sing-box/` 目录下创建 `docker-compose.yml`：
+在 `/etc/sing-box/` 下创建 `docker-compose.yml`：
 
 ```yaml
 version: "3.8"
@@ -126,25 +178,182 @@ services:
       - ./config.json:/etc/sing-box/config.json
 ```
 
-在终端运行启动指令：
+启动并查看日志确认无报错：
 
 ```bash
 docker compose up -d
 docker compose logs -f
 ```
 
+看到正常启动日志且无 `FATAL` 即成功。`network_mode: host` 让容器直接用宿主机网络，转发性能最高（但注意端口独占）。
+
+### 验证节点是否可用
+
+```bash
+# 1. 确认 443 端口在监听
+ss -tlnp | grep 443
+# 2. 看 Sing-box 日志有无报错
+docker compose logs --tail 50 | grep -iE "error|fatal"
+```
+
+端口监听正常后，去客户端按第八节配置连接，打开 `ip.sb` 确认 IP 已切换。
+
+---
+
+## 👥 六之一、多用户管理：给家人朋友开小号
+
+`users` 是数组，加用户只需追加对象（每个用户独立 UUID）：
+
+```json
+"users": [
+  { "uuid": "uuid-用户A", "flow": "xtls-r-flow" },
+  { "uuid": "uuid-用户B", "flow": "xtls-r-flow" }
+]
+```
+
+改完 `docker compose restart` 生效。**建议**：给每个用户独立 UUID，方便单独停用；不要把同一个 UUID 发给多人 —— 流量特征会暴露关联性。
+
+---
+
+## 🛡️ 七、安全加固：别让 VPS 裸奔
+
+节点上线后，立刻做两件事：
+
+1. **防火墙只开必要端口**：
+   ```bash
+   ufw default deny incoming
+   ufw allow 22/tcp    # SSH（建议改成高位端口）
+   ufw allow 443/tcp   # Reality
+   ufw allow 8443/udp  # Hysteria2（如有）
+   ufw enable
+   ```
+2. **Fail2ban 防暴力破解**：SSH 端口是扫描重灾区，装上 Fail2ban 自动封禁爆破 IP。
+
+完整加固流程见 [《使用 UFW + Fail2ban 打造 Sing-box 安全堡垒》](/posts/singbox-vps-security-ufw-fail2ban/)，主动探测防御见 [《Custom TLS 证书与 SNI 伪装防护》](/posts/singbox-custom-tls-sni-anti-probing-guide/)。
+
+---
+
+## 🚨 七之一、常见翻车现场：5 个真实排错案例
+
+**案例 1：客户端显示"已连接"但打不开网页**
+→ 90% 是 reality 密钥对不上。检查服务端 `private_key` 和客户端 `public_key` 是否来自**同一对**密钥，`short_id` 是否一致。
+
+**案例 2：日志报 `reality verification failed`**
+→ 伪装域名的 `server_name` 与 `handshake.server` 不一致，或换了伪装域名只改了一处。两处必须同步。
+
+**案例 3：能连但速度极慢**
+→ 先确认流量真的走了代理（`ip.sb` 查 IP），再检查 VPS 是否开了 BBR（见 [《Linux BBR 终极指南》](/posts/linux-bbr-accelration-guide/)）。排除后可能是线路问题，换 CN2 GIA 机器。
+
+**案例 4：Docker 容器起不来，报端口占用**
+→ `ss -tlnp | grep 443` 看谁占了 443。常见元凶：之前装的 nginx/caddy。`network_mode: host` 下端口独占，要么停掉它，要么换端口。
+
+**案例 5：一切正常，突然某天全挂了**
+→ 先看 `docker compose logs`，大概率是 IP 被封或商家网络故障。换 IP 或切备用节点，平时做好配置备份（第十节）。
+
+---
+
+## 📱 八、客户端对接
+
+服务端跑起来后，在客户端添加对应出站（以 Sing-box 客户端为例）：
+
+- `type: vless`，`server` 填 VPS IP / 域名，`server_port: 443`；
+- `uuid` 与服务端一致，`flow: xtls-rprx-vision`（注意客户端是 `xtls-rprx-vision`，服务端是 `xtls-r-flow`，别抄混）；
+- `tls.server_name` 与服务端伪装域名一致，`reality.public_key` 填第五步记下的公钥，`short_id` 一致；
+- uTLS 指纹选 `chrome`。
+
+客户端完整配置见 [《Sing-box 高效配置与出站路由全解析》](/posts/sing-box-full-configuration-combat-2026/)。
+
+---
+
+## 🔀 九、扩展：加挂 Hysteria2 双协议
+
+单 VLESS-Reality 足够日常用；如果追求弱网/晚高峰体验，可以再加一个 Hysteria2（UDP 加速）入站做双协议：
+
+```json
+{
+  "type": "hysteria2",
+  "tag": "hy2-in",
+  "listen": "::",
+  "listen_port": 8443,
+  "users": [{ "password": "your-password-here" }],
+  "tls": {
+    "enabled": true,
+    "alpn": ["h3"],
+    "certificate_path": "/etc/sing-box/cert.pem",
+    "key_path": "/etc/sing-box/key.pem"
+  }
+}
+```
+
+注意 Hysteria2 需要真实 TLS 证书（可申请免费证书），且 UDP 端口易被运营商 QoS。完整双协议实战见 [《Docker Compose 混合部署 VLESS-Reality 与 Hysteria 2 双通道》](/posts/docker-compose-vless-reality-hysteria2-gateway/)，端口跳跃优化见 [《Hysteria 2 / TUIC 端口跳跃实战》](/posts/hysteria2-port-hopping-optimization/)。
+
+---
+
+## 🔧 十、日常运维
+
+- **看日志**：`docker compose logs -f --tail 100`，连接失败先看这里；
+- **升级**：`docker compose pull && docker compose up -d`，两条命令完成；
+- **备份**：`/etc/sing-box/` 整个目录定期备份（配置+证书），丢了密钥对所有客户端都要重配；
+- **监控**：节点多起来后用 Uptime Kuma 做存活监控，见 [《Uptime Kuma 节点监控》](/posts/uptime-kuma-node-monitoring/)。
+- **证书续期**：如果加挂了 Hysteria2，记得把免费证书续期做成 cron 定时任务，过期会导致 UDP 端口握手失败，这个翻车点很多人踩过。
+
+---
+
+## 🔀 十二、服务端协议选型：Reality / Hysteria2 / TUIC 怎么选？
+
+| 协议 | 抗封锁 | 速度 | 部署难度 | 适合场景 |
+| :--- | :--- | :--- | :--- | :--- |
+| **VLESS-Reality** | 🏆 最强 | 快 | 中 | 主力协议，日常全能 |
+| **Hysteria2** | 强 | 🏆 弱网最快（UDP） | 中（需证书） | 晚高峰、弱网补充 |
+| **TUIC v5** | 强 | 快 | 中 | 备选，生态相对小 |
+
+**推荐组合**：Reality（443/TCP）做主力 + Hysteria2（8443/UDP）做补充，客户端用 `urltest` 自动选优。单协议用户直接 Reality 一把梭，简单且够用。协议深度对比见 [《2026 翻墙协议大决战》](/posts/proxy-protocols-comparison-2026/)。
+
+---
+
+## 💰 十三、自建成本账：到底划不划算？
+
+| 项目 | 费用 |
+| :--- | :--- |
+| VPS（1核1G，年付） | $30-60/年 |
+| 域名（可选，用于伪装/SNI） | $10/年 |
+| 证书 | $0（Reality 不需要，Hy2 用免费证书） |
+| **合计** | **约 ¥250-450/年** |
+
+对比机场年付 $60-120，自建便宜一半以上，且 IP 独享。代价是每年花几个小时运维 —— 对极客来说，这本身就是乐趣。
+
 ---
 
 ## ❓ 常见问题与 AI 快问快答 (FAQ)
 
-### Q1: 为什么要选择 `images.apple.com` 或 `www.microsoft.com` 作为伪装域名？
+### Q1: 为什么选 `images.apple.com` 做伪装域名？
 
-**答**：Reality 要求借用的伪装域名必须支持 TLS 1.3、HTTP/2，且公网访问量巨大。苹果和微软的大型 CDN 节点在防火墙看来有极其合规的流量特征，不易触发主动探测。
+**答**：Reality 要求伪装目标支持 TLS 1.3 + HTTP/2 且流量巨大。苹果/微软的 CDN 在防火墙看来特征极其合规，不易触发主动探测。**不要**用冷门小网站做伪装。
 
-### Q2: 搭建完节点后，客户端配置中还需要注意什么？
+### Q2: 客户端 `xtls-rprx-vision` 和服务端 `xtls-r-flow` 有什么区别？
 
-**答**：客户端配置中的 `tls.utls` 必须启用并选择 `chrome`（桌面端）或 `safari`（苹果移动端），保持 TLS 客户端指纹与真实浏览器一致，才能做到完全无懈可击。
+**答**：Vision 是客户端侧的流控实现，r-flow 是服务端侧的对应实现，两者配对使用。抄错会导致握手失败，这是新手最高频的翻车点。
+
+### Q3: 443 端口被占了怎么办？
+
+**答**：Reality 强烈建议用 443（最像正常 HTTPS）。如果被占用，检查是否有其他 Web 服务，考虑换机器或改用分流端口 + SNI 筛选（见 Reality 防封锁篇）。
+
+### Q4: IP 被流媒体拉黑了怎么办？
+
+**答**：先确认是 IP 问题还是 DNS 问题（见 [《DNS 终极配置方案》](/posts/sing-box-dns-leak-fakeip/)）。确认 IP 被拉黑后，找商家工单换 IP；选购时优先选"原生 IP"商家。
+
+### Q5: 一个 VPS 能开多少用户？
+
+**答**：VLESS-Reality 开销极低，1 核 1G 的 VPS 带 10-20 个轻度用户无压力。瓶颈永远在带宽而非 CPU。
+
+### Q6: 必须用 Docker 吗？直接二进制运行行不行？
+
+**答**：行。去 GitHub Release 下载对应架构的 sing-box 二进制，`./sing-box run -c config.json` 即可。Docker 的优势是升级、回滚、日志管理更省心，新手建议 Docker。
+
+### Q7: 换了 VPS（换 IP），客户端要改什么？
+
+**答**：只改客户端出站的 `server` 字段为新 IP。如果用了域名指向 VPS，那就什么都不用改 —— 这也是推荐用域名而非裸 IP 的原因之一。
 
 ---
 
-_（主机选购推荐：自建 Reality 节点需要服务器拥有优质干净的 IP 段与优秀的出口宽带。欢迎阅读 [《2026 国外 VPS 选购避坑指南》](/posts/vps-buying-guide-2026/)，获取 **DMIT、搬瓦工、CloudCone** 与 **RackNerd** 的折扣通道；如不想维护 VPS，可参考 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/) 选择商业 IPLC 专线服务。）_
+_（相关阅读：[《2026 国外 VPS 选购避坑指南》](/posts/vps-buying-guide-2026/) · [《Sing-box 高效配置与出站路由全解析》](/posts/sing-box-full-configuration-combat-2026/) · 不想运维可看 [《"饿饭CC云"深度评测》](/posts/efan-cc-cloud-review/)！）_
