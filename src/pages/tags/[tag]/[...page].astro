@@ -31,14 +31,23 @@ const { tag } = params as { tag: string };
 const { page, tagName } = Astro.props;
 ---
 
-<Layout title={`标签：${tagName} | ${SITE.title}`}>
+<Layout
+  title={
+    page.currentPage > 1
+      ? `标签：${tagName} · 第${page.currentPage}页 | ${SITE.title}`
+      : `标签：${tagName} | ${SITE.title}`
+  }
+  description={`「${tagName}」标签下的全部文章（共 ${page.total} 篇）｜Sing-box 教程指南的${tagName}相关教程与实战。`}
+  schemaType="CollectionPage"
+  noindex={page.currentPage > 1}
+>
   <Header />
   <Main
     pageTitle={[`标签：`, `${tagName}`]}
     titleTransition={tag}
     pageDesc={`所有含有“${tagName}”标签的文章。`}
   >
-    <h1 slot="title" transition:name={tag}>{`标签：${tag}`}</h1>
+    <h1 slot="title" transition:name={tag}>{`标签：${tagName}`}</h1>
     <ul>
       {page.data.map((data: any) => <Card {...data} />)}
     </ul>

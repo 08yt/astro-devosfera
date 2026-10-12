@@ -20,7 +20,12 @@ const { page } = Astro.props;
 const totalPosts = page.total;
 ---
 
-<Layout title={`Posts | ${SITE.title}`}>
+<Layout
+  title={page.currentPage > 1 ? `文章 · 第${page.currentPage}页 | ${SITE.title}` : `文章 | ${SITE.title}`}
+  description={`Sing-box 教程指南的全部文章（${totalPosts} 篇），涵盖 Sing-box 客户端、服务端搭建、路由规则与 Homelab 实战。`}
+  schemaType="CollectionPage"
+  noindex={page.currentPage > 1}
+>
   <Header />
   <Breadcrumb />
   <main id="main-content" class="app-layout pb-4">

@@ -22,7 +22,7 @@ const featuredPosts = sortedPosts
 const recentPosts = sortedPosts.filter(({ data }) => !data.featured);
 ---
 
-<Layout>
+<Layout schemaType="WebSite">
   <Header />
 
   <main id="main-content" data-layout="index" class="relative app-layout">
@@ -59,22 +59,22 @@ const recentPosts = sortedPosts.filter(({ data }) => !data.featured);
           class="hero-title mb-4 text-5xl leading-[1.1] font-extrabold tracking-tight sm:text-6xl lg:text-7xl"
         >
           {SITE.title}
-          <a
-            target="_blank"
-            rel="noopener noreferrer nofollow"
-            href="/rss.xml"
-            class="ml-2 inline-block align-middle"
-            aria-label="rss feed"
-            title="RSS Feed"
-          >
-            <IconRss
-              width={24}
-              height={24}
-              class="stroke-accent stroke-3 opacity-60 transition-all duration-300 hover:scale-110 hover:opacity-100"
-            />
-            <span class="sr-only">RSS Feed</span>
-          </a>
         </h1>
+        <a
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          href="/rss.xml"
+          class="mb-4 inline-block align-middle"
+          aria-label="rss feed"
+          title="RSS Feed"
+        >
+          <IconRss
+            width={24}
+            height={24}
+            class="stroke-accent stroke-3 opacity-60 transition-all duration-300 hover:scale-110 hover:opacity-100"
+          />
+          <span class="sr-only">RSS Feed</span>
+        </a>
 
         {/* ── Audio de marca ── */}
         {
