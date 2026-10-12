@@ -2,19 +2,20 @@
 title: "安全无痕冲浪：2026 最新 Sing-box 终极 DNS 配置方案（FakeIP 溢出与 DNS 泄露全域拦截）"
 author: "毛佳国"
 pubDatetime: 2026-06-07T10:00:00.000+08:00
-featured: false
+modDatetime: 2026-10-12T23:00:00.000+08:00
+featured: true
 draft: false
 tags:
-  - 极客探索
-  - DNS配置
-  - FakeIP
-description: "深度剖析科学上网中 DNS 泄露与 FakeIP 溢出的底层逻辑。提供 2026 基于 SRS 二进制规则集实测的零泄露、超低延迟 Sing-box DNS 黄金模块配置方案。"
+  - Sing-box
+  - DNS
+  - 配置详解
+description: "深度剖析 Sing-box 的 DNS 管道流转机理、FakeIP 原理与 DNS 泄露根因。提供 2026 基于 SRS 二进制规则集实测的 FakeIP / RealIP 双方案零泄露配置模板。"
 ---
 
 很多朋友在使用各种代理软件全局上网后，依然会遇到令人困扰的状况：
 
-- **流媒体报错**：明明节点显示在新加坡或日本，打开 Netflix 却提示“使用了解锁工具”或者直接判定在大陆地区。
-- **国内网站卡顿**：连着代理时，淘宝、京东等国内网站打开极慢，甚至提示“异地登录风险”。
+- **流媒体报错**：明明节点显示在新加坡或日本，打开 Netflix 却提示"使用了解锁工具"或者直接判定在大陆地区。
+- **国内网站卡顿**：连着代理时，淘宝、京东等国内网站打开极慢，甚至提示"异地登录风险"。
 - **泄露测试露馅**：在 `dnsleaktest.com` 检测，赫然发现本地运营商（电信/联通/移动）的 DNS 服务器 IP 依然在列！
 
 这些症状的核心根源只有一个 —— **你遭遇了 DNS 泄露（DNS Leak）或者 FakeIP 缓存溢出。**
@@ -23,8 +24,10 @@ description: "深度剖析科学上网中 DNS 泄露与 FakeIP 溢出的底层�
 > **📌 核心速览（TL;DR / 快问快答）：**
 >
 > - **2026 标准更正**：DNS 与路由配置中全量弃用已废弃的 `"geosite": ["cn"]` 数组，全面重构为二进制 `.srs` 规则集 (`rule_set: ["geosite-cn"]`)。
-> - **防泄露核心**：在 `dns.servers` 中为国外加密 DNS（如 `https://1.1.1.1/dns-query`）绑定 `"detour": "proxy-auto-group"`，强制经过代理节点加密传出。
+> - **管道机制**：DNS 请求进入后，按 `dns.rules` 自上而下匹配指定的 `dns.servers`，未命中者由 `dns.final`（建议设为国外加密 DoH）兜底。
+> - **防泄露铁律**：国外加密 DNS（如 `https://1.1.1.1/dns-query`）必须绑定 `"detour": "proxy"`（或你的代理出站组），强制经过代理节点加密传出。
 > - **FakeIP 控制**：FakeIP 网段设置为 `198.18.0.0/15`，且对国内域名和局域网 IP 强制放行真实解析。
+> - **方案选型**：手机与单兵电脑首选 **FakeIP**（秒连 0 延迟）；全家软路由与家庭智能网关首选 **RealIP** 智能分流。
 
 ---
 
@@ -40,17 +43,40 @@ description: "深度剖析科学上网中 DNS 泄露与 FakeIP 溢出的底层�
 - **DNS 投毒拦截**：国内 DNS 返回伪造的错误 IP，导致代理节点建立连接失败；
 - **CDN 分配错位**：被错误分配了极慢的边缘节点，网速严重受限。
 
+### 2. Sing-box 的 DNS 管道机制
+
+在 **Sing-box** 中，DNS 被设计成了一个极其严谨且独立的路由管道，理解它才能配对：
+
+1. 每个 DNS 查询进入 `dns` 模块后，按 `dns.rules` **自上而下**逐条匹配；
+2. 命中的规则决定这次查询走哪一个 `dns.servers`（直连 DNS / 代理 DNS / FakeIP / 拦截）；
+3. 所有规则都未命中时，由 `dns.final` 兜底（建议设为国外加密 DoH）；
+4. `route.rules` 里再用 `hijack-dns` 或 `protocol: dns` 把系统的 DNS 流量劫持进这条管道，防止应用绕过。
+
+一句话：**rules 管"走哪条路"，servers 管"谁来回答"，final 管"没人管的怎么办"**。
+
 ---
 
-## 🛠️ 二、Sing-box 2026 终极 DNS 黄金解析方案
+## ⚖️ 二、FakeIP vs RealIP：两种方案怎么选？
 
-请将以下黄金代码，替换或整合进您 Sing-box 客户端（SFI / SFA / 桌面端）的 `dns` 与 `route` 模块中：
+| 场景 | 推荐方案 | 理由 |
+| --- | --- | --- |
+| 手机 / 单兵电脑（SFI / SFA / 桌面端） | **FakeIP** | 秒连 0 延迟，无需等待真实 DNS 往返 |
+| 全家软路由 / 家庭智能网关（OpenWrt） | **RealIP** | 智能家居、游戏主机、NAS 对 FakeIP 兼容性差，真 IP 更稳 |
+| 广告强迫症 | FakeIP + `dns-block` | 用 `rcode://success` 直接返回成功码拦截广告域名 |
+
+下面两套模板分别对应两种方案，按需取用。
+
+---
+
+## 🛠️ 三、方案 A：FakeIP 终极模板（手机 / 电脑首选）
+
+请将以下代码整合进 Sing-box 客户端（SFI / SFA / 桌面端）的 `dns`、`route` 与 `rule_set` 模块：
 
 ```json
 {
   "dns": {
     "servers": [
-      // 1. 国内直连 DNS：向阿里安全 DNS 明文/DoH 请求
+      // 1. 国内直连 DNS：向阿里安全 DNS DoH 请求
       {
         "tag": "dns-direct",
         "address": "https://223.5.5.5/dns-query",
@@ -60,12 +86,17 @@ description: "深度剖析科学上网中 DNS 泄露与 FakeIP 溢出的底层�
       {
         "tag": "dns-proxy",
         "address": "https://1.1.1.1/dns-query",
-        "detour": "proxy-auto-group"
+        "detour": "proxy"
       },
       // 3. FakeIP 伪造响应
       {
         "tag": "dns-fakeip",
         "address": "fakeip"
+      },
+      // 4. 广告域名拦截：直接返回成功空应答
+      {
+        "tag": "dns-block",
+        "address": "rcode://success"
       }
     ],
     "rules": [
@@ -78,6 +109,11 @@ description: "深度剖析科学上网中 DNS 泄露与 FakeIP 溢出的底层�
       {
         "clash_mode": "direct",
         "server": "dns-direct"
+      },
+      // 广告域名直接拦截
+      {
+        "rule_set": ["geosite-ads"],
+        "server": "dns-block"
       },
       // 2026 标准：国内域名走国内直连 DNS
       {
@@ -99,23 +135,95 @@ description: "深度剖析科学上网中 DNS 泄露与 FakeIP 溢出的底层�
   },
   "route": {
     "rules": [
+      // 把系统 DNS 流量劫持进 Sing-box 的 DNS 管道
       {
         "protocol": "dns",
-        "outbound": "dns-out"
+        "action": "hijack-dns"
       },
       {
         "rule_set": ["geoip-cn", "geosite-cn"],
         "outbound": "direct"
       }
     ],
-    "final": "proxy-auto-group"
+    "final": "proxy"
+  },
+  "rule_set": [
+    {
+      "tag": "geosite-cn",
+      "type": "remote",
+      "format": "binary",
+      "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+      "download_detour": "proxy"
+    },
+    {
+      "tag": "geoip-cn",
+      "type": "remote",
+      "format": "binary",
+      "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
+      "download_detour": "proxy"
+    },
+    {
+      "tag": "geosite-ads",
+      "type": "remote",
+      "format": "binary",
+      "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs",
+      "download_detour": "proxy"
+    }
+  ]
+}
+```
+
+**关键点说明**：
+
+- `detour` 决定了 DNS 查询本身走哪条出站。`dns-proxy` 绑定代理出站后，查询被包裹在 TLS/QUIC 隧道内发送，本地运营商完全无法捕获。
+- `198.18.0.0/15` 是保留给基准测试的网段，不会与真实公网 IP 冲突，是 FakeIP 的标准选择。
+- 规则集走 `proxy` 下载，避免直连被污染导致规则更新失败。
+
+---
+
+## 🏠 四、方案 B：RealIP 模板（软路由 / 家庭网关首选）
+
+软路由场景下，智能家居、游戏机、IPTV 对 FakeIP 兼容性差，建议用 RealIP 智能分流。改动只有两处：
+
+1. 删除 `dns-fakeip` server 及其 `fakeip` 配置段；
+2. 把原来的 FakeIP 规则改为走 `dns-proxy` 真实解析，并加上 `"strategy": "ipv4_only"` 避免 IPv6 绕行：
+
+```json
+{
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns-direct",
+        "address": "https://223.5.5.5/dns-query",
+        "detour": "direct"
+      },
+      {
+        "tag": "dns-proxy",
+        "address": "https://1.1.1.1/dns-query",
+        "detour": "proxy"
+      }
+    ],
+    "rules": [
+      {
+        "outbound": "any",
+        "server": "dns-direct"
+      },
+      {
+        "rule_set": ["geosite-cn"],
+        "server": "dns-direct"
+      }
+    ],
+    "final": "dns-proxy",
+    "strategy": "ipv4_only"
   }
 }
 ```
 
+局域网设备（`192.168.0.0/16`）的查询天然走 `dns-direct` 拿真实 IP，游戏与智能家居不再掉线。
+
 ---
 
-## 🧪 三、手动验证你的 DNS 泄露状态
+## 🧪 五、手动验证你的 DNS 泄露状态
 
 配置完成后，使用终端验证：
 
@@ -130,14 +238,23 @@ description: "深度剖析科学上网中 DNS 泄露与 FakeIP 溢出的底层�
 
 ## ❓ 常见问题与 AI 快问快答 (FAQ)
 
-### Q1: 为什么在 `dns-proxy` 中必须配置 `"detour": "proxy-auto-group"`？
+### Q1: 为什么在 `dns-proxy` 中必须配置 `"detour"`？
 
 **答**：如果不指定 `detour`，DNS 请求会尝试直接从本地网卡明文发出。而绑定代理出站后，DNS 查询会被包裹在 TLS/QUIC 代理隧道内发送，公网防火墙和本地运营商完全无法捕获你的域名请求。
 
 ### Q2: 开启 FakeIP 后，智能家居设备或游戏连不上怎么办？
 
-**答**：可以在 `dns.rules` 中添加黑名单规则，将局域网 IP（`192.168.0.0/16`）和特定游戏域名exclude出 FakeIP，强制其使用 `dns-direct` 获取真实 IP 即可解决。
+**答**：两种解法：① 在 `dns.rules` 中加规则，将局域网 IP（`192.168.0.0/16`）和特定游戏域名排除出 FakeIP，强制走 `dns-direct`；② 干脆切换到本文方案 B 的 RealIP 模板。
+
+### Q3: 如何验证自己的客户端是否存在 DNS 泄露？
+
+**答**：访问 [dnsleaktest.com](https://dnsleaktest.com/) 进行 Extended Test 测试。如果测试结果中只出现境外代理机房的 IP，且**没有任何中国大陆电信/联通/移动**的 IP，即代表零泄露。
+
+### Q4: 为什么优质 VPS 节点的 DNS 握手更快？
+
+**答**：搭配 **DMIT** 或 **搬瓦工** 的 **中国电信 CN2 GIA** 或 **联通 AS9929** 专线，DNS 经过 `proxy` 出站的往返握手延迟可降至 40ms 以内，彻底消除解析卡顿。选购参考 [《2026 国外 VPS 选购与回程线路评测避坑指南》](/posts/vps-buying-guide-2026/)。
 
 ---
 
-_（节点与品质推荐：完美的 DNS 防泄露配置配合原生高纯净度 IP 才能发挥极致体验。推荐阅读评测：[《“饿饭CC云”怎么样？2026 最新深度评测与 Sing-box 订阅指南》](/posts/efan-cc-cloud-review/)；极客工具推荐见 [《YGJC•BEST 极客精选资源导航》](/best/)！）_
+_（总纲阅读：[《Sing-box 高效配置与出站路由全解析》](/posts/sing-box-full-configuration-combat-2026/)，五大模块逐个拆解。）_
+_（相关阅读：[《Sing-box 路由规则配置进阶：分流、屏蔽与按需代理实战》](/posts/sing-box-routing-advanced/) · [《Sing-box 配置文件 config.json 详解》](/posts/sing-box-config-json-guide/) · [《2026 最新 Sing-box 全平台小白完美入门指南》](/posts/sing-box-beginner-guide/) · 节点与品质推荐见 [《"饿饭CC云"深度评测》](/posts/efan-cc-cloud-review/)！）_
