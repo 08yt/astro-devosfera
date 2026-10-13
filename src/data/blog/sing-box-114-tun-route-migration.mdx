@@ -1,0 +1,173 @@
+---
+title: "Sing-box 1.14 TUN 与路由规则迁移：stack、sniff、特殊出站的新写法对照"
+author: "易邦"
+pubDatetime: 2026-10-13T18:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Sing-box
+  - 客户端
+description: "TUN 的 stack 参数即将废弃、sniff 从 inbound 搬到路由规则、block/dns 特殊出站被 action 取代。本文对照官方迁移文档，给出 TUN 与路由规则的新旧写法对照表。"
+---
+
+TUN 和路由规则是客户端配置里"祖传写法"最多的地方。本篇对照 [Sing-box 官方迁移文档](https://sing-box.sagernet.org/migration/)，把四个必改项一次讲清。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **TUN `stack` 删掉**：1.15 已废弃、1.17 将移除，现在删了就能用（新版自带更好的 TCP/IP 栈）。
+> - **`sniff` 搬家**：从 inbound 字段移到路由规则 `{"action": "sniff"}`。
+> - **`block`/`dns` 出站**：删掉这俩 outbound，改用 `{"action": "reject"}` / `{"action": "hijack-dns"}`。
+> - **`inet4_address` → `address`**：1.10 就合并了，还在用旧字段的顺手改掉。
+
+---
+
+## 🔌 1. TUN：删掉 `stack`，改掉旧地址字段
+
+**`stack`（1.15 废弃，1.17 移除）**：
+
+```json
+// 旧
+{ "type": "tun", "tag": "tun-in", "stack": "system", "address": ["172.18.0.1/30"] }
+// 新：直接删掉 stack
+{ "type": "tun", "tag": "tun-in", "address": ["172.18.0.1/30"] }
+```
+
+官方说法：新版 sing-tun 自带 TCP/IP 栈，峰值性能、能效、内存占用全面优于旧的 `system`/`gvisor` 实现。删掉 `stack` 反而更快更省电。
+
+**地址字段合并（1.10，早就该改）**：
+
+```json
+// 旧
+{ "inet4_address": "172.19.0.1/30", "inet6_address": "fdfe:dcba:9876::1/126" }
+// 新
+{ "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"] }
+```
+
+同理：`inet4_route_address` → `route_address`，`inet4_route_exclude_address` → `route_exclude_address`。
+
+---
+
+## 👃 2. `sniff`：从 inbound 搬到路由规则（1.11）
+
+**旧写法（废弃）**：
+
+```json
+{
+  "inbounds": [
+    { "type": "mixed", "tag": "mixed-in", "sniff": true, "sniff_timeout": "1s" }
+  ]
+}
+```
+
+**新写法**：
+
+```json
+{
+  "inbounds": [
+    { "type": "mixed", "tag": "mixed-in" }
+  ],
+  "route": {
+    "rules": [
+      { "inbound": "mixed-in", "action": "sniff", "timeout": "1s" }
+    ]
+  }
+}
+```
+
+注意字段也改名了：`sniff_timeout` → `timeout`。TProxy 入站同理，`"sniff": true` 从 tproxy inbound 里删掉，改走路由规则。
+
+---
+
+## 🚫 3. 特殊出站：`block`/`dns` → rule action（1.11）
+
+**旧写法（废弃）**：
+
+```json
+{
+  "outbounds": [{ "type": "block", "tag": "block" }],
+  "route": {
+    "rules": [
+      { "rule_set": ["geosite-ads"], "outbound": "block" },
+      { "protocol": "dns", "outbound": "dns" }
+    ]
+  }
+}
+```
+
+**新写法**：
+
+```json
+{
+  "route": {
+    "rules": [
+      { "rule_set": ["geosite-ads"], "action": "reject" },
+      { "protocol": "dns", "action": "hijack-dns" }
+    ]
+  }
+}
+```
+
+`block` 和 `dns` 这两个特殊 outbound 直接删掉，不用在 outbounds 里定义。`reject` 会返回拒绝响应（比静默丢弃对客户端更友好），`hijack-dns` 劫持 DNS 流量走内置处理。
+
+---
+
+## 🔐 4. 服务端注意：内联 ACME → 证书提供者（1.14）
+
+自建节点用 ACME 自动申请证书的注意，`tls.acme` 内联写法废弃了：
+
+```json
+// 旧
+{ "tls": { "enabled": true, "acme": { "domain": ["example.com"] } } }
+// 新
+{
+  "certificate_providers": [
+    { "type": "acme", "tag": "my-cert", "domain": ["example.com"] }
+  ],
+  "inbounds": [
+    { "tls": { "enabled": true, "certificate_provider": "my-cert" } }
+  ]
+}
+```
+
+好处：多个 inbound 可以共享同一个证书提供者，不用每个重复写一遍。
+
+---
+
+## 🧩 5. 容易忽略的两个小变更
+
+**`domain_suffix` 行为变化（1.9）**：规则值如果以 `.` 开头（如 `.example.com`）行为不变；否则现在匹配 `example.com` 或任意子域名。旧配置里靠"前缀匹配"歪打正着的规则，升级后行为可能变化，检查一遍。
+
+**WireGuard outbound → endpoint（1.11）**：`type: "wireguard"` 的出站改为 `endpoints` 数组里的 WireGuard 端点。用 WireGuard 组网（如配合 Tailscale 方案）的用户需要重写这段，普通代理用户不受影响。
+
+---
+
+## ✅ 迁移后自检清单
+
+- [ ] TUN 配置里没有 `stack`、`inet4_address` 等旧字段
+- [ ] inbound 里没有 `sniff`，路由规则里有对应的 `{"action": "sniff"}`
+- [ ] outbounds 里没有 `type: "block"` / `type: "dns"`
+- [ ] `sing-box check` 无 `deprecated` 警告
+- [ ] 重启后 TUN 正常接管、广告拦截规则生效、嗅探分流正常
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 删掉 stack 后，TUN 性能真的更好吗？
+
+**答**：按官方说法是的（1.15 自带新 TCP/IP 栈）。如果你的设备很老、升级后感觉异常，可以暂时 pin 住 1.14 版本，等 1.15 稳定了再跟进。但 `stack` 在 1.17 会被彻底移除，早晚得删。
+
+### Q2: 路由规则里还能用 "outbound": "direct" 吗？
+
+**答**：能。`action` 是给特殊动作（reject/sniff/hijack-dns 等）用的，普通分流规则继续用 `"outbound"` 指定出站。本文改的只是 `block`/`dns` 这两个**特殊**出站类型。
+
+### Q3: 改完 check 通过了，但上不了网？
+
+**答**：先看 `log` 级别调到 `debug` 看流量走了哪条规则。常见坑：`sniff` 搬家后忘了加路由规则，导致域名分流失效；`hijack-dns` 没配，DNS 走了直连被污染。用二分法逐条注释规则定位。
+
+---
+
+_📚 **1.14 升级迁移专题**：① [《升级避坑总览》](/posts/sing-box-114-migration-guide/) → ② [《DNS 模块迁移实战》](/posts/sing-box-114-dns-migration/) → ③ 本篇（TUN/路由）_
+
+_（总纲阅读：[《Sing-box 高效配置与出站路由全解析》](/posts/sing-box-full-configuration-combat-2026/)；TUN 避坑见 [《TUN 模式 WSL2/Docker 优化》](/posts/singbox-tun-mode-wsl2-docker-optimization/)；TProxy 见 [《OpenWrt TProxy 透明代理》](/posts/openwrt-singbox-tproxy/)。）_

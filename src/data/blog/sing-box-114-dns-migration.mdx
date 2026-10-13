@@ -1,0 +1,179 @@
+---
+title: "Sing-box 1.14 DNS 模块迁移实战：address 写法、FakeIP 与缓存字段对照表"
+author: "易邦"
+pubDatetime: 2026-10-13T14:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Sing-box
+  - DNS
+description: "1.12 起 DNS 服务器的 address 写法被废弃，1.14 又动了 FakeIP 与缓存字段。本文给出官方迁移文档核实过的新旧对照表，照着改就能过 sing-box check。"
+---
+
+DNS 是 1.12–1.14 变更最密集的模块。如果你照着 2024–2025 年的教程配的 DNS，升级 1.14 后大概率遇到 `deprecated` 警告甚至启动失败。本文所有对照均出自 [Sing-box 官方迁移文档](https://sing-box.sagernet.org/migration/)。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **`address` → `type` 格式**：`{"address": "https://1.1.1.1/dns-query"}` 改成 `{"type": "https", "server": "1.1.1.1"}`。
+> - **FakeIP**：删掉顶层 `dns.fakeip` 字段，改用 `{"type": "fakeip", "tag": "fakeip"}` 服务器。
+> - **缓存**：`independent_cache` 直接删；`store_rdrc` 改名 `store_dns`。
+> - **改完必做**：`sing-box check -c config.json`，警告清零才算完。
+
+---
+
+## 🔄 1. DNS 服务器：`address` → `type` 格式（1.12）
+
+旧写法用一个 `address` 字符串表达一切，新写法拆成 `type` + `server`，对照表：
+
+| 旧写法（废弃） | 新写法 |
+|---|---|
+| `{"address": "1.1.1.1"}` | `{"type": "udp", "server": "1.1.1.1"}` |
+| `{"address": "tcp://1.1.1.1"}` | `{"type": "tcp", "server": "1.1.1.1"}` |
+| `{"address": "tls://1.1.1.1"}` | `{"type": "tls", "server": "1.1.1.1"}` |
+| `{"address": "https://1.1.1.1/dns-query"}` | `{"type": "https", "server": "1.1.1.1"}` |
+| `{"address": "quic://1.1.1.1"}` | `{"type": "quic", "server": "1.1.1.1"}` |
+| `{"address": "h3://1.1.1.1/dns-query"}` | `{"type": "h3", "server": "1.1.1.1"}` |
+| `{"address": "local"}` | `{"type": "local"}` |
+| `{"address": "dhcp://auto"}` | `{"type": "dhcp"}` |
+
+实战例子——最常见的 DoH + 本地 DNS 组合：
+
+```json
+{
+  "dns": {
+    "servers": [
+      { "tag": "dns-direct", "type": "udp", "server": "223.5.5.5", "detour": "direct" },
+      { "tag": "dns-proxy", "type": "https", "server": "1.1.1.1", "detour": "proxy" }
+    ]
+  }
+}
+```
+
+注意：`strategy`（如 `ipv4_only`）也从服务器字段移到了**规则**层或顶层 `dns.strategy`，别留在 server 里。
+
+---
+
+## 🎭 2. FakeIP：顶层字段 → 独立服务器类型（1.12）
+
+**旧写法（废弃）**：
+
+```json
+{
+  "dns": {
+    "servers": [
+      { "tag": "fakeip", "address": "fakeip" }
+    ],
+    "fakeip": {
+      "enabled": true,
+      "inet4_range": "198.18.0.0/15",
+      "inet6_range": "fc00::/18"
+    }
+  }
+}
+```
+
+**新写法**：
+
+```json
+{
+  "dns": {
+    "servers": [
+      {
+        "type": "fakeip",
+        "tag": "fakeip",
+        "inet4_range": "198.18.0.0/15",
+        "inet6_range": "fc00::/18"
+      }
+    ],
+    "rules": [
+      {
+        "query_type": ["A", "AAAA"],
+        "server": "fakeip"
+      }
+    ]
+  }
+}
+```
+
+变化点：顶层的 `dns.fakeip` 整个删掉，地址段搬进 `type: "fakeip"` 的服务器对象里；规则里的 `"server": "fakeip"` 保持不变。
+
+---
+
+## 💾 3. 缓存字段：删一个、改名一个（1.14）
+
+```json
+// 旧（1.14 废弃）
+{ "dns": { "independent_cache": true } }
+// 新：直接删掉这个字段，不需要替代
+
+// 旧
+{ "experimental": { "cache_file": { "store_rdrc": true } } }
+// 新
+{ "experimental": { "cache_file": { "store_dns": true } } }
+```
+
+`store_dns` 会把完整 DNS 缓存持久化到缓存文件，重启后秒恢复，效果比 `store_rdrc` 更好。
+
+---
+
+## 🎯 4. 高级：DNS 规则的地址过滤改法（1.14）
+
+如果你在 DNS 规则里直接用 `ip_cidr` / `ip_is_private` 做过滤（比如 GeoIP 分流），1.14 要求改用"先求值、再匹配响应"模式：
+
+```json
+{
+  "dns": {
+    "rules": [
+      { "action": "evaluate", "server": "remote" },
+      {
+        "match_response": true,
+        "rule_set": "geoip-cn",
+        "action": "route",
+        "server": "local"
+      },
+      { "action": "route", "server": "remote" }
+    ]
+  }
+}
+```
+
+逻辑：先用 `evaluate` 去远端要一次真实解析结果，再用 `match_response` 对结果做 GeoIP 判断。普通用户用不到这一节，DNS 规则只用域名匹配的可以跳过。
+
+---
+
+## ✅ 迁移后自检清单
+
+```bash
+sing-box check -c /etc/sing-box/config.json
+```
+
+逐项确认：
+
+- [ ] 没有 `address` 字段残留在 `dns.servers` 里
+- [ ] 没有顶层 `dns.fakeip`
+- [ ] 没有 `independent_cache` / `store_rdrc`
+- [ ] `check` 输出无 `deprecated` 警告
+- [ ] 重启后 `log` 无 DNS 相关报错，国内外域名解析正常
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 只改了 address → type，check 还是报 deprecated 怎么办？
+
+**答**：把 `check` 的完整警告贴出来逐条看。常见漏网：`strategy` 还留在 server 里、`rcode://` 写法（要改成 DNS 规则的 `action: "predefined"` + `"rcode": "REFUSED"`）、`domain_strategy`（改用 `domain_resolver`）。
+
+### Q2: 旧版客户端（如 1.12）能用新写法吗？
+
+**答**：`type` 格式是 1.12 引入的，1.12+ 通用。如果你还有设备跑 1.11 或更老，先升级客户端再统一改配置，别混用。
+
+### Q3: FakeIP 和 TUN 的 `strict_route` 有冲突吗？
+
+**答**：这是两回事。FakeIP 是 DNS 层的假地址分配，`strict_route` 是 TUN 的路由严格模式。配 FakeIP 时记得把 `198.18.0.0/15` 加到 route 的 direct 豁免，避免假 IP 被送进代理循环。
+
+---
+
+_📚 **1.14 升级迁移专题**：① [《升级避坑总览》](/posts/sing-box-114-migration-guide/) → ② 本篇（DNS） → ③ [《TUN 与路由规则迁移》](/posts/sing-box-114-tun-route-migration/)_
+
+_（总纲阅读：[《Sing-box DNS 防泄漏与 FakeIP 终极指南》](/posts/sing-box-dns-leak-fakeip/)，防泄漏体系全解析；自建加密 DNS 见 [《自建 DoH/DoT 服务器》](/posts/singbox-doh-dot-dns-server-setup/)。）_

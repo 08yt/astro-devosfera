@@ -1,0 +1,109 @@
+---
+title: "Sing-box 1.14 升级避坑指南：破坏性变更总览与迁移检查清单（2026版）"
+author: "易邦"
+pubDatetime: 2026-10-13T10:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Sing-box
+  - 规则进阶
+description: "Sing-box 1.14.3 已发布，这次升级废弃了一批常用字段，旧配置直接升级可能无法启动。本文对照官方迁移文档，逐条梳理 1.10–1.15 的破坏性变更，并给出安全的升级检查清单。"
+---
+
+Sing-box **1.14.3**（2026 年 10 月发布）是近年来废弃字段最多的一次大版本。如果你直接 `pull` 最新镜像重启，老配置大概率起不来——不是你的配置写错了，是字段被官方废弃了。
+
+本文对照 [Sing-box 官方迁移文档](https://sing-box.sagernet.org/migration/)，把 1.10 到 1.15 的破坏性变更一次讲清，并给出安全升级流程。DNS 与 TUN/路由的具体改法见本专题另两篇。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **升级三步**：备份配置 → 升级 → `sing-box check -c config.json` 校验，看到 `deprecated` 警告逐条改。
+> - **重灾区**：DNS 模块（`address` 写法、FakeIP 顶层字段、缓存字段）、TUN（`stack`、`inet4_address`）、`sniff` 位置、内联 ACME。
+> - **1.15 预告**：TUN 的 `stack` 参数已废弃，1.17 将移除，现在就该删掉。
+
+---
+
+## 📋 升级前检查清单
+
+动手前先做这四件事，能避开 90% 的翻车：
+
+1. **备份配置**：`cp config.json config.json.bak`，Docker 用户备份整个 `/opt/singbox` 目录。
+2. **记录当前版本**：`sing-box version`，知道自己在从哪个版本往上跳（跨多个大版本要逐段看变更）。
+3. **读 changelog**：[GitHub Releases](https://github.com/SagerNet/sing-box/releases) 里搜 "Deprecated"，只看废弃项就行。
+4. **先校验再重启**：升级后第一件事是 `sing-box check`，而不是直接重启服务。
+
+---
+
+## 🗺️ 破坏性变更总览表
+
+| 版本 | 废弃/变更 | 影响 |
+|---|---|---|
+| 1.15（开发中） | TUN `stack` 参数废弃，1.17 移除 | 所有 TUN 配置 |
+| 1.14 | 内联 ACME → 证书提供者 | 用 `tls.acme` 的服务端 |
+| 1.14 | `independent_cache` 废弃（直接删） | DNS 配置 |
+| 1.14 | `store_rdrc` → `store_dns` | DNS 缓存持久化 |
+| 1.14 | DNS 规则的 `ip_cidr` 等地址过滤字段需配合 `match_response` | 高级 DNS 分流 |
+| 1.12 | DNS `address` 写法 → `type` 格式 | **所有** DNS 服务器配置 |
+| 1.12 | 顶层 `fakeip` 字段 → `type: "fakeip"` 服务器 | FakeIP 用户 |
+| 1.11 | `sniff` 从 inbound 移到 route rule action | TProxy/透明代理配置 |
+| 1.11 | `block`/`dns` 特殊出站 → rule action | 用黑名单/劫持 DNS 的配置 |
+| 1.11 | WireGuard outbound → endpoint | WireGuard 用户 |
+| 1.10 | TUN `inet4_address` → `address` | TUN 配置 |
+| 1.9 | `domain_suffix` 匹配行为变化 | 域名后缀规则 |
+
+**最容易被忽视的三处**：本站很多文章（含旧版）用的 `{"address": "https://1.1.1.1/dns-query"}`（1.12 废弃）、`"sniff": true` 写在 inbound 里（1.11 废弃）、`"inet4_address": "172.19.0.1/30"`（1.10 废弃）。如果你照着旧教程配的，现在就可以对着下文改。
+
+---
+
+## 🔄 安全升级四步法
+
+```bash
+# 1. 备份
+cp /etc/sing-box/config.json /etc/sing-box/config.json.bak
+
+# 2. 升级（二进制/容器二选一）
+docker compose pull && docker compose up -d   # Docker
+# 或下载新版二进制替换
+
+# 3. 校验（关键！）
+sing-box check -c /etc/sing-box/config.json
+
+# 4. 看警告逐条修
+# 输出里的 "deprecated" 就是待办清单，修完再 check，直到干净
+```
+
+`check` 通过但有 deprecated 警告时，**当前版本还能跑**，但下个大版本可能直接拒绝启动。别拖，警告出来就修。
+
+---
+
+## 🚨 升级后起不来的常见报错
+
+| 报错关键词 | 原因 | 去哪修 |
+|---|---|---|
+| `unknown field` / `invalid` | 字段被移除 | 对照本文表格找新字段 |
+| `deprecated` | 字段废弃但仍兼容 | 按官方迁移文档改新写法 |
+| `fakeip` 相关 | 顶层 fakeip 字段废弃 | 见本专题 DNS 篇 |
+| TUN 启动失败 | `stack` 或旧地址字段 | 见本专题 TUN/路由篇 |
+| macOS 客户端配置丢失 | 1.14 换了 Apple 开发者账号 | 官方给出迁移命令，见下文 FAQ |
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 必须升级到 1.14 吗？旧版本能继续用吗？
+
+**答**：能用，没人逼你升。但新协议、新特性和安全修复都在新版；而且越晚升级，攒的废弃字段越多，迁移越痛。建议每 2–3 个大版本跟一次。
+
+### Q2: macOS 客户端升级 1.14 后配置全没了？
+
+**答**：1.14 更换了 Apple 开发者账号，macOS 独立客户端是新应用，配置不会自动继承。官方迁移文档给出了迁移旧数据目录的命令（`mv` Group Containers 下的旧目录），操作前先备份。
+
+### Q3: Docker 用户怎么知道何时该升级？
+
+**答**：别追 `latest` 自动更新。订阅 GitHub Releases 的 "Deprecated" 部分，有废弃项时再手动升级。生产节点建议 pin 住具体版本号（见 [《Docker 部署指南》](/posts/sing-box-docker-deployment-guide/)）。
+
+---
+
+_📚 **1.14 升级迁移专题**：① 本篇（总览） → ② [《DNS 模块迁移实战》](/posts/sing-box-114-dns-migration/) → ③ [《TUN 与路由规则迁移》](/posts/sing-box-114-tun-route-migration/)_
+
+_（总纲阅读：[《Sing-box 高效配置与出站路由全解析》](/posts/sing-box-full-configuration-combat-2026/)；官方迁移文档：[sing-box.sagernet.org/migration](https://sing-box.sagernet.org/migration/)。）_
