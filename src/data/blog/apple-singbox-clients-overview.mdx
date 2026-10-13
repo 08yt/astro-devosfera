@@ -1,0 +1,94 @@
+---
+title: "苹果全家桶玩转 Sing-box：SFI / SFM / SFT 官方客户端总览与选型指南（2026版）"
+author: "易邦"
+pubDatetime: 2026-10-13T20:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Sing-box
+  - 客户端
+description: "iPhone、Mac、Apple TV 都想用 Sing-box？本文总览官方三端客户端 SFI、SFM、SFT 的下载渠道、版本现状与第三方客户端选型，附 1.14 账号变更的影响说明。"
+---
+
+苹果用户玩 Sing-box 有两条路：**官方三端**（SFI/SFM/SFT）和**第三方客户端**（Shadowrocket、Loon、Surge、Stash）。本文帮你一次理清该怎么选。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **三端对应**：SFI = iOS，SFM = macOS，SFT = Apple tvOS，同一套 sing-box 配置通用。
+> - **硬门槛**：需要**非国区 Apple ID**（iOS 15+/macOS 13+/tvOS 17+）。
+> - **下载现状**：App Store 曾因审核问题下架过，TestFlight（需赞助）最稳；macOS 可走 Homebrew `brew install sfm`。
+> - **1.14 提醒**：官方更换 Apple 开发者账号，macOS 老用户升级需手动迁移数据（见本专题 macOS 篇）。
+
+---
+
+## 🍎 官方三端是什么关系？
+
+SFI/SFM/SFT 都是 sing-box 官方出品，**内核版本与配置格式完全统一**：你在 iPhone 上调好的 `config.json`，原样导入 Mac 就能用。它们都支持：
+
+- 本地配置 + 远程订阅（URL 拉取）
+- TUN 透明代理（iOS 走系统 VPN 权限）
+- 完整的 sing-box 路由、DNS、规则集能力
+
+第三方客户端（小火箭/Loon/Surge）的优势是**图形化规则编辑、脚本、UI 体验**，代价是订阅费 + 内核版本可能滞后。怎么选，看这张表：
+
+| 需求 | 推荐 |
+|---|---|
+| 要最新内核、最新协议（Hysteria2/TUIC） | SFI/SFM 官方端 |
+| 要脚本、MitM 抓包、精美 UI | Loon / Surge / Stash |
+| 预算有限、够用就好 | Shadowrocket（买断制） |
+| Apple TV | SFT（tvOS 17+） |
+
+第三方四款的详细对比见 [《iOS 代理神器大比拼》](/posts/singbox-ios-clients-comparison-shadowrocket-loon-surge-stash/)。
+
+---
+
+## 📲 下载渠道现状（截至 2026-10）
+
+苹果生态的下载是最大变数，实话实说：
+
+1. **App Store**：官方应用曾因"审核误判违规"被下架过，上架状态反复。能搜到就直接下，搜不到别慌，看下面。
+2. **TestFlight**：最稳的渠道，但名额只给[赞助者](https://github.com/sponsors/nekohasekai)（接受一次性赞助），通过 Telegram 机器人或邮件获取邀请。
+3. **macOS 独立版**：`brew install sfm` 或 GitHub Releases 下载，不依赖 App Store。
+4. **越狱版 SFI**：GitHub Releases 有 `SFI-iphoneos-arm64.deb`（需 rootless iOS 15+），额外支持进程名匹配等。
+
+**统一前提**：非国区 Apple ID。国区账号搜不到、装不了，这是苹果政策，与 sing-box 无关。
+
+---
+
+## ⚠️ 1.14 的账号变更：macOS 用户必看
+
+1.14 起官方更换了 Apple 开发者账号，macOS 独立客户端变成了**新应用**，旧配置不会自动继承。升级前先备份，升级后按官方迁移文档搬运数据目录（具体命令见本专题 [《macOS 篇》](/posts/sing-box-macos-sfm-guide/)）。
+
+iOS 的 SFI 同理：如果 App Store 里的应用换了 Bundle ID，旧数据需要手动备份恢复，别直接删除旧 App。
+
+---
+
+## 🗺️ 本专题路线图
+
+- **本篇**：选型与下载总览
+- [《SFI iOS 实战》](/posts/sing-box-ios-sfi-guide/)：订阅导入、TUN 开启、分流配置
+- [《SFM macOS 实战》](/posts/sing-box-macos-sfm-guide/)：安装、1.14 数据迁移、TUN 模式
+- Apple TV 用户另见 [《tvOS 部署指南》](/posts/apple-tv-singbox-tvos-setup-guide/)
+
+> 本文下载渠道信息基于 sing-box 官方文档（2026-10 核实），App Store 状态变化快，以下单时实际为准。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 国区 Apple ID 真的一点办法没有吗？
+
+**答**：SFI/SFM 必须非国区 ID。但第三方如 Shadowrocket 国区曾上架过（时有时无），或者直接用 macOS 的 Homebrew 版 SFM（不需要 Apple ID）。iOS 非越狱目前无解，建议注册一个美区/港区 ID 备用。
+
+### Q2: SFI 和 Shadowrocket 能共存吗？
+
+**答**：能，但别同时开 VPN/TUN，一次只运行一个。配置可以共用同一份订阅链接。
+
+### Q3: 官方客户端会收集隐私数据吗？
+
+**答**：按官方隐私政策，SFI 不收集、不分享个人数据，所有数据只保存在本机。
+
+---
+
+_（总纲阅读：[《Sing-box 全平台小白入门指南》](/posts/sing-box-beginner-guide/)；第三方选型见 [《iOS 代理神器大比拼》](/posts/singbox-ios-clients-comparison-shadowrocket-loon-surge-stash/)。）_
