@@ -1,6 +1,6 @@
 ---
 title: "自建安全加密 DNS：2026 使用 Sing-box 搭建 DoH/DoT 递归解析服务器与广告拦截实战"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-07-17T10:00:00.000+08:00
 featured: true
 draft: false
@@ -66,7 +66,8 @@ description: "详解如何使用 Sing-box 的高性能内建 DNS 模块自建安
     "servers": [
       {
         "tag": "cloudflare-doh",
-        "address": "https://1.1.1.1/dns-query",
+        "type": "https",
+        "server": "1.1.1.1",
         "detour": "direct-out"
       }
     ],
@@ -92,7 +93,62 @@ description: "详解如何使用 Sing-box 的高性能内建 DNS 模块自建安
 
 ---
 
-## ❓ 常见问题与 AI 快问快答 (FAQ)
+## 🤔 DoH / DoT / DoQ 怎么选？
+
+| 协议 | 端口 | 特点 |
+|---|---|---|
+| DoT | 853 | 纯 TLS，握手开销小，Android"私人 DNS"原生支持 |
+| DoH | 443 | 伪装成 HTTPS，穿透力最强，iOS 描述文件可全局绑定 |
+| DoQ | 853/UDP | 基于 QUIC，理论延迟最低，客户端支持还少 |
+
+**实战建议**：两个都开。Android 用户走 DoT，iOS/浏览器走 DoH，一套 VPS 全家通用。
+
+---
+
+## 🔐 证书：用 acme.sh 自动申请和续期
+
+自建 DoH/DoT 必须用**公网 CA 签发的证书**，自签证书 Android 会直接拒绝。推荐 acme.sh：
+
+```bash
+acme.sh --issue -d dns.yourdomain.com --standalone
+acme.sh --install-cert -d dns.yourdomain.com \
+  --key-file /etc/ssl/dns.key \
+  --fullchain-file /etc/ssl/dns.crt \
+  --reloadcmd "docker restart sing-box"
+```
+
+证书 90 天过期，acme.sh 的 cron 会自动续期，`--reloadcmd` 让容器重载新证书。
+
+---
+
+## 🧱 防火墙：只留加密端口
+
+```bash
+ufw allow 443/tcp
+ufw allow 853/tcp
+ufw deny 53/udp   # 明文 DNS 必须关，否则 VPS 会被当成放大器攻击别人
+```
+
+这是安全红线：开放明文 53 的 UDP 的 VPS，会在几小时内被扫描器发现并利用做 DDoS 放大，你的服务商可能直接封机器。
+
+---
+
+## 📱 客户端接入姿势
+
+- **Android**：设置 → 网络 → 私人 DNS → 填 `dns.yourdomain.com`（DoT）。
+- **iOS**：用 [DNS Profile Creator](https://dpc.0x0d.sh) 生成 DoH 描述文件安装。
+- **Sing-box 客户端**：在 `dns.servers` 里加一条 `https://dns.yourdomain.com/dns-query`，`detour` 走直连。
+
+---
+
+## 🛡️ 防滥用：要不要加访问控制？
+
+Sing-box 的 DNS 服务端本身**没有鉴权机制**，任何人知道域名都能用。两个思路：
+
+1. **低调**：域名不公开，只给家人用，被扫到的概率极低。
+2. **白名单**：防火墙只放行你家宽带的 IP 段，最彻底但换 IP 要改规则。
+
+别在公网论坛晒你的 DNS 域名，道理和晒节点订阅链接一样。
 
 ### Q1: 自建 DoH/DoT 服务器对 VPS 的物理延迟有要求吗？
 
@@ -102,7 +158,15 @@ description: "详解如何使用 Sing-box 的高性能内建 DNS 模块自建安
 
 **答**：请确认 853 端口已经在 VPS 防火墙（UFW/security group）中开放，且绑定的 SSL 证书不是自签证书（必须是公网 CA 签发）。
 
+### Q3: 自建 DNS 和直接用 1.1.1.1 比，优势在哪？
+
+**答**：三点：① 防劫持，运营商看不到你查了什么；② 广告拦截，服务端规则集全家设备生效，手机不用装去广告 App；③ 分流可控，国内域名走 223.5.5.5、国外走代理，延迟最优。代价是你要维护一台 VPS。
+
+### Q4: 规则集里的 geosite-ads 多久更新一次？
+
+**答**：配置里的 `update_interval: "1d"` 会每天自动拉取。广告域名更新快，保持自动更新即可，不用手动管。
+
 ---
 
-_（总纲阅读：[《VPS 从零部署 Sing-box 节点服务端实战》](/posts/vps-singbox-vless-reality/)，从选购到上线全流程。）_
+_（总纲阅读：[《VPS 从零部署 Sing-box 节点服务端实战》](/posts/vps-singbox-vless-reality/)，从选购到上线全流程；DNS 防泄漏体系见 [《Sing-box DNS 防泄漏与 FakeIP 终极指南》](/posts/sing-box-dns-leak-fakeip/)。）_
 _（相关资源导航：如果您需要搭建自建 DNS 用的优质 VPS 节点，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)，获取 DMIT、搬瓦工与 CloudCone 优惠通道；商用专线机场评测见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_

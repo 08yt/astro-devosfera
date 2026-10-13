@@ -1,0 +1,173 @@
+---
+title: "Sing-box 连不上？从看日志到修复的完整诊断手册（2026版）"
+author: "毛佳国"
+pubDatetime: 2026-10-14T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - Sing-box
+  - 排错
+description: "Sing-box 连不上的系统化排错指南：先看日志定位，再按启动失败、握手失败、DNS、分流四类对症修复，附各平台日志位置与 15 个真实翻车案例。"
+---
+
+连不上时别急着重装。90% 的问题看一眼日志就能定位。本文给你一套**从日志到修复**的标准流程，桌面端、手机端、服务器端通用。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **第一步永远是看日志**，不是重装、不是换节点。
+> - **三板斧**：`sing-box check` 查配置 → 看 ERROR/FATAL 关键词 → 二分法排查。
+> - **最高频真凶**：时间不同步（TLS 握手失败）、订阅过期、DNS 被劫持、分流规则写反。
+> - 各平台日志位置见第 1 节，对号入座。
+
+---
+
+## 📋 1. 先找到日志
+
+| 平台 | 日志位置 |
+|---|---|
+| 命令行/服务器 | 终端直接输出；或 `journalctl -u sing-box -f`（systemd） |
+| GUI.for.SingBox | 设置 → 日志 |
+| sing-box-windows | 主界面日志页 / Web Dashboard |
+| SFI（iOS） | 设置 → 查看服务日志 |
+| SFM（macOS） | 应用内日志页 |
+| NekoBox（安卓） | 右上角日志图标 |
+
+看不懂完整日志没关系，抓关键词就行：`FATAL`、`ERROR`、`deprecated`、`timeout`、`handshake`、`refused`。
+
+---
+
+## 🔍 2. 诊断流程：先分类，再动手
+
+```
+客户端启动失败（闪退/打不开）
+└──→ 第 3 节：配置问题
+
+能启动，节点全红/超时
+├──→ 刚配好第一次用 → 第 4 节：网络与握手
+├──→ 以前能用突然不行 → 第 5 节：订阅与服务端
+└──→ 部分网站能开、部分不行 → 第 6 节：DNS 与分流
+
+TUN 模式特有
+└──→ 第 7 节：TUN 专项
+```
+
+---
+
+## 🧱 3. 启动失败：99% 是配置文件写错
+
+**症状**：一点启动就退出 / FATAL / 客户端闪退。
+
+1. **先跑检查**（命令行用户）：
+   ```bash
+   sing-box check -c config.json
+   ```
+   它会精确报出第几行哪个字段错了，比人眼快十倍。
+
+2. **常见写法错误**：
+   - JSON 逗号多一个/少一个 → 用在线 JSON 校验器过一遍
+   - 抄了旧教程的废弃字段 → 对照 [《1.14 升级避坑指南》](/posts/sing-box-114-migration-guide/) 的废弃表改
+   - 日志里出现 `deprecated` → 按提示的新字段改，不是能跑就行的
+
+3. **图形客户端闪退**：同样先看日志页，大概率也是配置 JSON 非法；恢复手段是切回上一个能用的配置备份。
+
+> 习惯：每次改配置前复制一份备份，`config.json.bak` 能救命。
+
+---
+
+## 🤝 4. 握手失败：网络与 TLS/Reality
+
+**症状**：配置没问题，节点测速全红，日志里 `handshake failure` / `timeout` / `connection refused`。
+
+### 4.1 时间不同步（最高频！）
+
+TLS 对时间极敏感，客户端与服务端时间差几分钟就握手失败。
+
+- Windows：设置 → 时间 → 自动设置时间
+- Linux 服务器：`timedatectl` 看 NTP 是否同步
+- 路由器/OpenWrt：最容易中招，确认 NTP 能连上
+
+### 4.2 Reality 参数对不上
+
+日志出现 `reality: verification failed`，逐项核对：
+
+- `server_name`（SNI）与服务端一致
+- `short_id` 一致（注意别多复制了空格）
+- `fingerprint`（uTLS）与服务端期望一致
+- 公钥 `public_key` 是服务端的，不是私钥
+
+### 4.3 端口与防火墙
+
+- VPS 安全组/防火墙放行对应端口（TCP+UDP，Hysteria2 必须 UDP）
+- 本地防火墙/杀毒软件别拦截客户端
+- `connection refused` = 端口没开或服务端没跑；`timeout` = 网络不通或被墙
+
+### 4.4 Hysteria2 专项
+
+- `obfs` 密码两端一致
+- 端口跳跃：服务端开了跳跃，客户端也要配 `ports` 范围
+- 弱网先关 `brutal_cc` 试试
+
+---
+
+## 📡 5. 以前能用突然不行：订阅与服务端
+
+1. **订阅过期/被重置**：去机场后台复制新链接，客户端里更新订阅。
+2. **Clash 订阅直接粘给原生客户端**：解析不了，先转换（见 [《订阅转换总纲》](/posts/convert-clash-to-singbox/)）。
+3. **服务端挂了**：SSH 上去 `systemctl status sing-box`，看是不是崩了；顺手 `sing-box check` 验证配置。
+4. **IP 被墙**：表现为突然全红、换啥协议都不行 → 换 IP 或换中转。
+5. **晚高峰拥堵**：CN2 也扛不住春晚级拥堵，先测速换节点再下结论。
+
+---
+
+## 🌐 6. 部分网站打不开：DNS 与分流
+
+**症状**：Google 能开、国内 App 打不开，或反过来。
+
+1. **分流规则写反**：检查 `final` 是不是被设成了 `direct`；`geosite-cn`/`geoip-cn` 直连规则要在 `final: proxy` 之前。
+2. **规则集没下载**：远程 SRS 下不下来 → 分流瘫痪；看日志有没有下载失败，换规则集源或用本地缓存（1.14+ 自动预热）。
+3. **DNS 泄漏/劫持**：TUN 下建议 `hijack-dns` + FakeIP，原理见 [《DNS 防泄漏指南》](/posts/sing-box-dns-leak-fakeip/)。
+4. **国内 App 打不开**：微信/银行类加直连，或参考 [《TUN 进阶规则》](/posts/sing-box-client-tun-advanced-rules/) 的豁免思路。
+
+---
+
+## 🔌 7. TUN 模式专项
+
+- **开了 TUN 打不开网页**：大概率 DNS，切 TUN DNS 接管模式（`hijack`/`native`，见 [《sing-box-windows 实战》](/posts/sing-box-windows-client-guide/)）。
+- **内网设备连不上**（NAS/打印机）：route 顶部加 `192.168.0.0/16`、`10.0.0.0/8` → direct 豁免。
+- **和 VPN 软件冲突**：一次只开一个 TUN，关掉其他的。
+- **WSL2/Docker 冲突**：见 [《TUN 终极调优》](/posts/singbox-tun-mode-wsl2-docker-optimization/)。
+
+---
+
+## 🧰 8. 终极手段（按顺序试）
+
+1. 重启客户端（清掉旧连接和 DNS 缓存）
+2. 换个网络环境（手机热点/Wi-Fi 切换，定位是本地网络还是服务端问题）
+3. 换个节点/协议交叉验证
+4. 回滚到上一个能用的配置 + 内核版本
+5. 带着**完整日志**去 GitHub Issues 提问（issue 模板要求的那几项别漏）
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 日志里一堆 INFO，需要管吗？
+
+**答**：INFO 是正常信息，只看 ERROR/FATAL/WARN。WARN（如 deprecated）建议修，ERROR 必须修。
+
+### Q2: 所有节点突然全红，第一反应查什么？
+
+**答**：三件事按顺序：① 本地时间对不对 ② 订阅过期没 ③ 换手机热点试试。80% 的"突然全挂"是这三样之一。
+
+### Q3: 重装能解决问题吗？
+
+**答**：几乎不能。配置问题重装还在，网络问题重装没用。重装唯一的作用是排除"客户端本身坏了"，排最后。
+
+### Q4: 想系统学排错，还看哪篇？
+
+**答**：[《桌面端进阶：10 大翻车现场》](/posts/desktop-clients-advanced-tips/) 是本篇的案例库，[《1.14 升级避坑指南》](/posts/sing-box-114-migration-guide/) 解决版本升级类翻车。
+
+---
+
+_（总纲阅读：[《Sing-box 全平台小白入门指南》](/posts/sing-box-beginner-guide/)；[《配置总纲》](/posts/sing-box-full-configuration-combat-2026/)；[《DNS 总纲》](/posts/sing-box-dns-leak-fakeip/)。）_
