@@ -1,6 +1,6 @@
 ---
 title: "Sing-box TUN 模式终极调优：解决 WSL2、Docker、Git 与本地回环网络网络阻断避坑指南"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-07-15T10:00:00.000+08:00
 featured: true
 draft: false
@@ -36,10 +36,9 @@ description: "深度剖析 Sing-box 在开启 TUN 模式接管系统网卡后的
       "type": "tun",
       "tag": "tun-in",
       "interface_name": "singbox-tun",
-      "stack": "system",
       "auto_route": true,
       "strict_route": true,
-      "inet4_address": "172.19.0.1/30"
+      "address": ["172.19.0.1/30"]
     }
   ],
   "route": {
@@ -67,7 +66,57 @@ description: "深度剖析 Sing-box 在开启 TUN 模式接管系统网卡后的
 
 ---
 
-## ❓ 常见问题与 AI 快问快答 (FAQ)
+## 🧠 先理解冲突的根源：TUN 到底干了什么
+
+TUN 模式会创建一个虚拟网卡并**接管系统路由表**，所有流量先经过 Sing-box 再决定走代理还是直连。问题就出在"所有"二字上：
+
+- WSL2 自己有一套虚拟网卡和 NAT，TUN 抢了默认路由 → WSL2 内网络不通。
+- Docker Desktop 的网段（`172.16.0.0/12`）被 TUN 吃掉 → pull 镜像超时。
+- 本地开发的 `localhost:3000` 被送进代理 → 本地服务"失联"。
+
+解法思路统一：**把不该代理的流量，在 route 最前面豁免掉**。
+
+---
+
+## 🖥️ stack 参数：1.15 已废弃，直接删掉
+
+旧教程里常见的 `"stack": "system"`（或 `gvisor`/`mixed`）在 1.15 已被废弃，1.17 将彻底移除。官方说法：新版 sing-tun 自带 TCP/IP 栈，性能、能效、内存占用全面优于旧实现。
+
+**现在的做法**：`stack` 字段整个删掉，不用选。如果你的配置里还有它，删掉即完成迁移。
+
+Windows 上 UWP 应用（微软商店）连不上，优先检查 TUN 的 `auto_route`/`strict_route` 和回环豁免，而不是折腾 stack。
+
+---
+
+## 🐧 WSL2 详解：mirrored 模式有版本门槛
+
+`networkingMode=mirrored` 需要 **Windows 11 22H2 及以上**。如果你的系统版本不够，老方案是：
+
+1. WSL2 里手动设置代理：`export https_proxy=http://$(宿主机IP):7890`
+2. 宿主机 IP 从 `/etc/resolv.conf` 的 nameserver 取（NAT 模式下）
+
+mirrored 模式开启后，WSL2 和宿主机共享同一套网络，Sing-box 的 TUN 规则直接生效，`curl` 不用任何额外配置。
+
+---
+
+## 🐳 Docker Desktop 冲突的完整处理
+
+除了 route 里豁免 `172.16.0.0/12`，还有两个坑：
+
+1. **Docker Desktop for Windows 自带 WSL2 后端**：先确认 WSL2 网络已解决（见上节），否则 Docker 里的容器同样断网。
+2. **改完 route 规则要重启 Docker 服务**：Docker 启动时会缓存 DNS 和路由，规则生效后重启一次 Docker Desktop 最稳。
+
+---
+
+## 🔍 排查方法论：流量到底走了哪条规则
+
+怀疑某条流量被误代理？开 debug 日志看命中：
+
+```json
+{ "log": { "level": "debug", "timestamp": true } }
+```
+
+日志里会打印每条连接命中的 rule。配合**二分法**：先把可疑规则逐条注释，定位到具体哪条再修，比瞎改快得多。
 
 ### Q1: 开启 TUN 模式后，本地运行的 MySQL/Redis 数据库连不上怎么排查？
 
@@ -76,6 +125,14 @@ description: "深度剖析 Sing-box 在开启 TUN 模式接管系统网卡后的
 ### Q2: 在 Windows 11 下，WSL2 如何开启镜像网卡模式？
 
 **答**：在 Windows 用户根目录编辑 `.wslconfig`，写入 `[wsl2]` `networkingMode=mirrored`，随后在 cmd 执行 `wsl --shutdown` 重启即可无缝共享宿主机 Sing-box 代理。
+
+### Q3: 手机投屏 / NAS 内网传输变慢，是 TUN 的锅吗？
+
+**答**：大概率是。把 `192.168.0.0/16` 和 `224.0.0.0/4`（组播，投屏发现用）加到 direct 豁免。智能家居的 mDNS（`224.0.0.251`）被代理会导致设备"失踪"，这条最容易被忽略。
+
+### Q4: TUN 和系统代理模式该用哪个？
+
+**答**：日常办公用系统代理就够了，省电、兼容性好；需要接管所有流量（终端、游戏、UWP）再开 TUN。两者可以共存：TUN 处理全局，浏览器单独配系统代理做补充。
 
 ---
 
