@@ -1,6 +1,6 @@
 ---
 title: "订阅自动转换与极私密分发：2026 利用 GitHub Actions 与 Python 一键同步生成定制化 Sing-box 订阅配置"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-07-22T10:00:00.000+08:00
 featured: true
 draft: false
@@ -72,7 +72,68 @@ jobs:
 
 ---
 
-## ❓ 常见问题与 AI 快问快答 (FAQ)
+## 🔑 为什么不用公共转换网站？
+
+把机场订阅链接（含 Token）粘贴到公共 subconverter 站点，等于把**账号密码交给陌生人**：对方可以盗刷你的流量、记录你的节点 IP，甚至转卖订阅。私有仓库方案里，订阅 URL 只存在 GitHub Secrets，转换全程在 GitHub 的隔离容器里跑，外部拿不到。
+
+---
+
+## 🐍 convert.py 的核心思路
+
+不需要写完整解析器，关键逻辑三步：
+
+1. **拉取并解码**：`requests.get(SUB_URL)` 拿到 Base64，解码得节点明文（vmess/vless/trojan 链接）。
+2. **逐行转 outbound**：按协议拼成 Sing-box 的 outbound 对象，`tag` 用节点名，`server/port/uuid` 一一对应。
+3. **套模板**：把生成的 outbounds 数组注入你本地写好的 Sing-box 模板（route、dns、inbounds 都复用模板，只换节点）。
+
+Clash YAML 转同理：`pyyaml` 解析 `proxies` 列表再映射字段。第一次写脚本花 1 小时，之后永久自动化。
+
+---
+
+## 🔐 Secrets 配置步骤
+
+仓库 Settings → Secrets and variables → Actions，新建三个：
+
+| Secret | 内容 |
+|---|---|
+| `SUB_URL` | 机场订阅链接 |
+| `GIST_PAT` | 有 `gist` 权限的 Personal Access Token |
+| `GIST_ID` | 提前建好的 Secret Gist 的 ID |
+
+PAT 只给 `gist` 权限，别给 repo 全权限，泄露了也只影响 Gist。
+
+---
+
+## ⏰ 定时策略与免费额度
+
+`cron: "0 20 * * *"` 是每天北京时间凌晨 4 点跑（GitHub 用 UTC）。注意两点：
+
+1. **schedule 可能延迟**：GitHub 高峰期 cron 会排队几分钟到几十分钟，别指望分秒不差。
+2. **免费额度**：私有仓库每月 2000 分钟 Actions，跑个转换脚本（每次 <1 分钟）连零头都用不完。
+
+想手动触发？workflow 里留了 `workflow_dispatch`，在 Actions 页面点 Run 即可。
+
+---
+
+## 📲 客户端订阅：Secret Gist 的 Raw 链接
+
+Secret Gist 不会被搜索引擎收录，但**知道链接的人都能访问**，所以：
+
+- Gist 文件名别用 `singbox.json` 这种直白名字。
+- 客户端里填 `https://gist.githubusercontent.com/你/xxx/raw/singbox_config.json`。
+- 换订阅 Token 后记得 Secrets 里同步更新，否则拉到的是过期节点。
+
+---
+
+## 🔄 备选方案对比
+
+| 方案 | 优点 | 缺点 |
+|---|---|---|
+| GitHub Actions（本文） | 免费、自动化、私密 | 首次配置 30 分钟 |
+| 本地 subconverter | 转换质量最高 | 要自己搭服务器 |
+| 公共转换站 | 零配置 | Token 泄露风险 |
+
+嫌折腾？直接看 [《订阅转换总纲》](/posts/convert-clash-to-singbox/) 选现成工具。
 
 ### Q1: 运行 GitHub Actions 是否会被 GitHub 判定为违规封号？
 
@@ -81,6 +142,14 @@ jobs:
 ### Q2: 机场节点包含 CN2 GIA 或 AS9929 高价专线，如何保证生成的 JSON 配置文件规则准确？
 
 **答**：在 Python 模板中引入 `"format": "binary"` 的 `.srs` 规则集 (`rule_set: ["geosite-cn"]`)，确保专线节点精确分流，避免国际高阶带宽被误消耗。
+
+### Q3: Actions 运行失败，第一步看哪里？
+
+**答**：点进失败的 run，看红色叉的 step 日志。常见三种：① Secrets 名写错（`secrets.SUB_URL` 大小写敏感）；② GIST_PAT 过期或没给 gist 权限；③ convert.py 里某行节点解析抛异常——先在本地跑通再推上去。
+
+### Q4: 私有仓库的 Actions 会被 GitHub 限流吗？
+
+**答**：schedule 触发的 workflow 在仓库 60 天无提交时会被自动暂停，解决方法是每月手动点一次 Run，或保持转换脚本的正常提交节奏。
 
 ---
 
