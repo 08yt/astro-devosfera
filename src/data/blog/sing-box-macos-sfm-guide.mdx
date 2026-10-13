@@ -1,0 +1,110 @@
+---
+title: "SFM 保姆级教程：macOS 上安装 Sing-box 官方客户端与 1.14 数据迁移指南"
+author: "易邦"
+pubDatetime: 2026-10-13T22:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Sing-box
+  - 客户端
+description: "macOS 上用 SFM（sing-box for macOS）：Homebrew 安装、订阅导入、TUN 模式，以及 1.14 更换 Apple 开发者账号后的数据迁移步骤（官方命令）。"
+---
+
+SFM（sing-box for macOS）是官方 macOS 客户端。macOS 版有个独家优势：**不依赖 App Store 也能装**（Homebrew/GitHub），且支持完整的 TUN。下面分安装、迁移、使用三步讲。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **安装**：`brew install sfm` 最省心，或 GitHub Releases 下独立版。
+> - **1.14 迁移**：官方换了 Apple 开发者账号，老用户升级后配置不继承，按官方命令搬数据目录（下文给步骤）。
+> - **TUN**：macOS 上 TUN 体验最好，终端、浏览器、App 全接管。
+
+---
+
+## 📲 1. 安装：三种方式
+
+```bash
+# 方式 A：Homebrew（推荐，升级方便）
+brew install sfm
+
+# 方式 B：GitHub Releases 下载独立版
+# https://github.com/SagerNet/sing-box/releases
+```
+
+方式 C 是 App Store 版（需非国区 ID），但受审核波动影响，着急用选 A 或 B。
+
+---
+
+## ⚠️ 2. 1.14 数据迁移（老用户必看）
+
+1.14 起官方更换 Apple 开发者账号，macOS 独立客户端是**新应用**，旧的配置和设置不会自动继承。按 [官方迁移文档](https://sing-box.sagernet.org/migration/) 操作：
+
+```bash
+# 把旧数据目录搬到新位置（1.14.0-rc.2 之前升级的用户用）
+mv ~/Library/Group\ Containers/287TTNZF8L.io.nekohasekai.sfavt \
+  ~/Library/Group\ Containers/P8XK3KHB48.io.nekohasekai.sfamt
+
+# 清掉可能导致权限弹窗的扩展属性
+xattr -c ~/Library/Group\ Containers/P8XK3KHB48.io.nekohasekai.sfamt
+rm ~/Library/Group\ Containers/P8XK3KHB48.io.nekohasekai.sfamt/.com.apple.containermanagerd.metadata.plist
+```
+
+如果启动时仍弹权限提示，再执行：
+
+```bash
+tccutil reset All io.nekohasekai.sfamt.standalone
+```
+
+然后重启应用。**操作前先备份**整个 Group Containers 目录，搬错了还能回滚。
+
+> iOS 的 SFI 如果也遇到换包名，思路一样：先备份旧数据，别急着删旧 App。
+
+---
+
+## 📥 3. 导入配置
+
+和 SFI 通用：
+
+1. **远程订阅**：新建远程配置，粘贴 sing-box JSON 订阅链接（Clash 订阅先看 [《订阅转换总纲》](/posts/convert-clash-to-singbox/)）。
+2. **本地配置**：直接导入 `config.json`，macOS 上手搓最方便，模板用 [《配置总纲》](/posts/sing-box-full-configuration-combat-2026/) 的 1.14 新写法。
+3. **分享链接**：`vless://` 等单节点链接粘贴即导入。
+
+---
+
+## 🔛 4. TUN 模式：macOS 的完全体
+
+macOS 上 TUN 是体验最好的模式：
+
+1. 选中配置，打开开关，允许系统扩展/VPN 权限。
+2. 终端的 `curl`、`git`、`brew` 全部走代理，不用逐个配环境变量——这是 macOS 版相对 iOS 的最大优势。
+3. 配合 `strict_route`，连 Docker Desktop for Mac 的流量也能接管（冲突处理见 [《TUN 终极调优》](/posts/singbox-tun-mode-wsl2-docker-optimization/)）。
+
+**分流**：macOS 支持 `process_name` 进程分流（iOS 不行），微信、网银、终端可以精细编排，见 [《TUN 进阶规则》](/posts/sing-box-client-tun-advanced-rules/)。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: brew 安装的 SFM 和 App Store 版有区别吗？
+
+**答**：内核一样。独立版/Hombrew 版不受 App Store 审核影响，更新更快；App Store 版沙盒更严。1.14 的账号变更主要影响 App Store/独立应用的数据继承，brew 版照常升级。
+
+### Q2: 迁移命令里的那串 ID 是什么？
+
+**答**：那是 Apple 开发者 Team ID。`287TTNZF8L` 是旧账号，`P8XK3KHB48` 是新账号。命令就是把旧 Team ID 名下的数据目录搬到新 Team ID 名下。
+
+### Q3: TUN 开启后，内网设备（NAS、打印机）连不上？
+
+**答**：route 规则顶部加局域网豁免（`192.168.0.0/16` → direct），这是 TUN 的通用操作，不是 macOS 特有问题。
+
+### Q4: 想开机自启？
+
+**答**：SFM 应用内一般有"登录时启动"选项；独立内核版可用 launchd 写 plist。应用内选项最省事。
+
+---
+
+_📚 **Apple 全家桶专题**：① [《总览与选型》](/posts/apple-singbox-clients-overview/) → ② [《SFI iOS 实战》](/posts/sing-box-ios-sfi-guide/) → ③ 本篇（SFM macOS）_
+
+_（总纲阅读：[《Sing-box 全平台小白入门指南》](/posts/sing-box-beginner-guide/)；1.14 全套迁移见 [《1.14 升级避坑指南》](/posts/sing-box-114-migration-guide/)。）_
+
+_> 本文安装与迁移步骤基于 sing-box 官方文档（2026-10 核实）；App 界面细节未经真机逐项实测，以实际版本为准。_

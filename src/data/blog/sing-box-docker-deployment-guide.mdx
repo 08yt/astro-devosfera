@@ -1,6 +1,6 @@
 ---
 title: "在 VPS 上使用 Docker 一键部署 Sing-box 服务端"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-03-09T11:40:00.000+08:00
 featured: true
 draft: false
@@ -94,6 +94,74 @@ services:
 
 ---
 
+## 🐳 为什么生产环境推荐 Docker 而不是一键脚本？
+
+一键脚本把二进制、systemd 服务、依赖库全装进宿主机系统，卸载残留、升级翻车、换 VPS 迁移都是体力活。Docker 方案的优势：
+
+- **隔离干净**：所有文件只在 `/opt/singbox` 一个目录，删容器不留垃圾。
+- **秒级回滚**：升级翻车？`docker compose down && docker compose up -d` 切回旧镜像 tag 即可。
+- **迁移无痛**：整个目录打包拷到新 VPS，`up -d` 直接复活。
+
+---
+
+## 🏷️ 镜像版本策略：别无脑追 latest
+
+`ghcr.io/sagernet/sing-box:latest` 方便，但生产节点建议 **pin 住具体版本**（如 `:1.12.0`），原因：
+
+1. Sing-box 大版本偶有破坏性配置变更，latest 半夜自动更新可能导致节点失联。
+2. 升级应该是你主动做的：先看 [GitHub Release](https://github.com/SagerNet/sing-box/releases) 的 changelog，确认配置兼容再 `docker compose pull`。
+
+推荐流程：测试环境先用 latest 验证 → 生产 compose 文件写死版本号 → 每月手动升级一次。
+
+---
+
+## 💾 数据持久化与备份
+
+Compose 文件里只映射了 `config.json`，建议再加两样：
+
+```yaml
+volumes:
+  - ./config.json:/etc/sing-box/config.json
+  - ./data:/var/lib/sing-box   # 缓存与状态
+  - ./logs:/var/log/sing-box   # 日志落盘方便排查
+```
+
+备份就是 `tar -czf singbox-backup.tar.gz /opt/singbox`，换机器解压即用。
+
+---
+
+## 🔧 日常运维三板斧
+
+```bash
+docker compose logs -f --tail=100   # 实时看日志
+docker compose pull && docker compose up -d  # 升级
+docker compose exec sing-box sing-box check -c /etc/sing-box/config.json  # 升级前校验配置
+```
+
+`check` 这一步很关键：Sing-box 启动时配置写错会直接退出，升级前先校验能避免"手一抖节点全灭"。
+
+---
+
+## 🧩 同一 VPS 跑多协议节点
+
+想在一个 VPS 上同时跑 VLESS-Reality（443）+ Hysteria2（UDP 8443）？再起一个 service 即可，共用 host 网络：
+
+```yaml
+services:
+  sing-box-reality:
+    image: ghcr.io/sagernet/sing-box:1.12.0
+    network_mode: "host"
+    volumes: ["./reality.json:/etc/sing-box/config.json"]
+  sing-box-hy2:
+    image: ghcr.io/sagernet/sing-box:1.12.0
+    network_mode: "host"
+    volumes: ["./hy2.json:/etc/sing-box/config.json"]
+```
+
+注意两个配置文件的 `listen_port` 不能冲突。
+
+---
+
 ## ❓ 常见问题与 AI 快问快答 (FAQ)
 
 ### Q1: 如何在 Docker 容器内生成 Reality 密钥对？
@@ -107,6 +175,14 @@ docker run --rm ghcr.io/sagernet/sing-box:latest generate reality-keypair
 ### Q2: 选购哪家 VPS 主机部署 Sing-box 容器体验最佳？
 
 **答**：推荐选择 **DMIT** 或 **搬瓦工** 的 **中国电信 CN2 GIA** 或 **联通 AS9929** 专线小鸡，单核 1G 配置即可轻松跑满千兆带宽。
+
+### Q3: 升级镜像后容器起不来了，怎么排查？
+
+**答**：三步走：① `docker compose logs --tail=50` 看报错，90% 是配置文件字段被新版废弃；② 对照 Release changelog 修改配置；③ 用 `sing-box check` 校验通过后再 `up -d`。实在修不好就把 image tag 改回旧版本号回滚。
+
+### Q4: host 网络模式下端口被占用怎么办？
+
+**答**：host 模式没有端口映射隔离，宿主机上跑了 Nginx 占 443 就会冲突。用 `ss -tlnp` 查占用者，要么停掉它，要么把 Sing-box 的 `listen_port` 换成别的（如 8443）。
 
 ---
 

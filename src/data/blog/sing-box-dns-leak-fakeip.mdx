@@ -1,6 +1,6 @@
 ---
 title: "安全无痕冲浪：2026 最新 Sing-box 终极 DNS 配置方案（FakeIP 溢出与 DNS 泄露全域拦截）"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-06-07T10:00:00.000+08:00
 modDatetime: 2026-10-12T23:00:00.000+08:00
 featured: true
@@ -79,61 +79,60 @@ description: "深度剖析 Sing-box 的 DNS 管道流转机理、FakeIP 原理�
       // 1. 国内直连 DNS：向阿里安全 DNS DoH 请求
       {
         "tag": "dns-direct",
-        "address": "https://223.5.5.5/dns-query",
+        "type": "https",
+        "server": "223.5.5.5",
         "detour": "direct"
       },
       // 2. 国外加密 DNS：强制走代理出站加密发送，彻底斩断本地泄露
       {
         "tag": "dns-proxy",
-        "address": "https://1.1.1.1/dns-query",
+        "type": "https",
+        "server": "1.1.1.1",
         "detour": "proxy"
       },
-      // 3. FakeIP 伪造响应
+      // 3. FakeIP 伪造响应（1.12+ 写成独立服务器类型）
       {
         "tag": "dns-fakeip",
-        "address": "fakeip"
-      },
-      // 4. 广告域名拦截：直接返回成功空应答
-      {
-        "tag": "dns-block",
-        "address": "rcode://success"
+        "type": "fakeip",
+        "inet4_range": "198.18.0.0/15",
+        "inet6_range": "fc00::/18"
       }
+      // 4. 广告拦截不再需要单独 server，改用规则的 predefined 动作（见下）
     ],
     "rules": [
-      // 保证 Sing-box 内核自身的域名解析走直连，防止逻辑死锁
-      {
-        "outbound": "any",
-        "server": "dns-direct"
-      },
       // 兼容一键切全局直连模式
       {
         "clash_mode": "direct",
+        "action": "route",
         "server": "dns-direct"
       },
-      // 广告域名直接拦截
+      // 广告域名直接拦截：返回空的成功应答（替代旧 rcode://success 写法）
       {
         "rule_set": ["geosite-ads"],
-        "server": "dns-block"
+        "action": "predefined",
+        "rcode": "NOERROR"
       },
       // 2026 标准：国内域名走国内直连 DNS
       {
         "rule_set": ["geosite-cn"],
+        "action": "route",
         "server": "dns-direct"
       },
       // 其余查询映射 FakeIP
       {
         "query_type": ["A", "AAAA"],
+        "action": "route",
         "server": "dns-fakeip"
       }
     ],
-    "fakeip": {
-      "enabled": true,
-      "inet4_range": "198.18.0.0/15",
-      "inet6_range": "fc00::/18"
-    },
     "final": "dns-proxy"
   },
   "route": {
+    // 内核自身解析节点域名时走直连 DNS，防止代理套娃死锁
+    // （替代 1.12 已废弃的 {"outbound": "any"} DNS 规则写法）
+    "default_domain_resolver": {
+      "server": "dns-direct"
+    },
     "rules": [
       // 把系统 DNS 流量劫持进 Sing-box 的 DNS 管道
       {
@@ -194,22 +193,23 @@ description: "深度剖析 Sing-box 的 DNS 管道流转机理、FakeIP 原理�
     "servers": [
       {
         "tag": "dns-direct",
-        "address": "https://223.5.5.5/dns-query",
+        "type": "https",
+        "server": "223.5.5.5",
         "detour": "direct"
       },
       {
         "tag": "dns-proxy",
-        "address": "https://1.1.1.1/dns-query",
+        "type": "https",
+        "server": "1.1.1.1",
         "detour": "proxy"
       }
     ],
     "rules": [
-      {
-        "outbound": "any",
-        "server": "dns-direct"
-      },
+      // 注：内核自身解析走直连，改用 route.default_domain_resolver（见方案 A 的 route 配置），
+      // 1.12 已废弃 {"outbound": "any"} 的 DNS 规则写法
       {
         "rule_set": ["geosite-cn"],
+        "action": "route",
         "server": "dns-direct"
       }
     ],

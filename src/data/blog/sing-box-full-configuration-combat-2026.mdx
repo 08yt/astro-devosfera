@@ -1,6 +1,6 @@
 ---
 title: "Sing-box 高效配置与出站路由全解析：从入门到真实场景实战 (2026版)"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-03-16T09:00:00.000+08:00
 modDatetime: 2026-10-12T23:00:00.000+08:00
 featured: true
@@ -59,17 +59,15 @@ Sing-box 的 `config.json` 看似复杂，其实只有五个顶级模块，数�
   "type": "tun",
   "tag": "tun-in",
   "interface_name": "singbox-tun",
-  "inet4_address": "172.19.0.1/30",
+  "address": "172.19.0.1/30",
   "auto_route": true,
-  "strict_route": true,
-  "stack": "system",
-  "sniff": true
+  "strict_route": true
 }
 ```
 
 - `auto_route` + `strict_route`：自动接管系统路由，TUN 模式的灵魂；
-- `sniff: true`：**FakeIP 模式下必须开** —— 从 TLS 握手中嗅探真实域名，否则域名分流规则全部失效；
-- `stack: system`：用系统协议栈，兼容性最好。
+- **嗅探**：FakeIP 模式下必须开 —— 1.11 起从 inbound 搬到路由规则写 `{"inbound": "tun-in", "action": "sniff"}`，从 TLS 握手中嗅探真实域名，否则域名分流规则全部失效；
+- `stack` 参数 1.15 已废弃，直接删掉（新版自带更好的 TCP/IP 栈）。
 
 TUN 与 Docker/WSL2 冲突的调优见 [《Sing-box TUN 模式终极调优》](/posts/singbox-tun-mode-wsl2-docker-optimization/)。
 
@@ -134,9 +132,9 @@ TUN 与 Docker/WSL2 冲突的调优见 [《Sing-box TUN 模式终极调优》](/
 
 `route.rules` **自上而下匹配、命中即止** —— 顺序就是一切。推荐的通用顺序：
 
-1. **DNS 劫持**：`protocol: dns → dns-out`，先把 DNS 流量收进管道；
+1. **DNS 劫持**：`protocol: dns` + `action: hijack-dns`，先把 DNS 流量收进管道（1.11 起不再需要 `dns` 特殊出站）；
 2. **局域网放行**：`127.0.0.0/8`、`192.168.0.0/16` 等 → `direct`；
-3. **广告拦截**：`geosite-ads → block`；
+3. **广告拦截**：`geosite-ads` + `action: reject`（1.11 起不再需要 `block` 出站）；
 4. **国内直连**：`geosite-cn` + `geoip-cn → direct`；
 5. **兜底**：`final: proxy`，其余全部走代理。
 
@@ -153,33 +151,28 @@ TUN 与 Docker/WSL2 冲突的调优见 [《Sing-box TUN 模式终极调优》](/
   "log": { "level": "info", "timestamp": true },
   "dns": {
     "servers": [
-      { "tag": "dns-proxy", "address": "https://8.8.8.8/dns-query", "detour": "proxy" },
-      { "tag": "dns-direct", "address": "https://223.5.5.5/dns-query", "detour": "direct" },
-      { "tag": "dns-fakeip", "address": "fakeip" }
+      { "tag": "dns-proxy", "type": "https", "server": "8.8.8.8", "detour": "proxy" },
+      { "tag": "dns-direct", "type": "https", "server": "223.5.5.5", "detour": "direct" },
+      {
+        "tag": "dns-fakeip",
+        "type": "fakeip",
+        "inet4_range": "198.18.0.0/15",
+        "inet6_range": "fc00::/18"
+      }
     ],
     "rules": [
-      { "outbound": "any", "server": "dns-direct" },
-      { "rule_set": ["geosite-cn"], "server": "dns-direct" },
-      { "query_type": ["A", "AAAA"], "server": "dns-fakeip" }
-    ],
-    "fakeip": {
-      "enabled": true,
-      "inet4_range": "198.18.0.0/15",
-      "inet6_range": "fc00::/18"
-    },
-    "independent_cache": true
+      { "rule_set": ["geosite-cn"], "action": "route", "server": "dns-direct" },
+      { "query_type": ["A", "AAAA"], "action": "route", "server": "dns-fakeip" }
+    ]
   },
   "inbounds": [
     {
       "type": "tun",
       "tag": "tun-in",
       "interface_name": "singbox-tun",
-      "inet4_address": "172.19.0.1/30",
-      "inet6_address": "fdfe:dcba:9876::1/126",
+      "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
       "auto_route": true,
-      "strict_route": true,
-      "stack": "system",
-      "sniff": true
+      "strict_route": true
     }
   ],
   "outbounds": [
@@ -215,18 +208,20 @@ TUN 与 Docker/WSL2 冲突的调优见 [《Sing-box TUN 模式终极调优》](/
         }
       }
     },
-    { "type": "direct", "tag": "direct" },
-    { "type": "block", "tag": "block" },
-    { "type": "dns", "tag": "dns-out" }
+    { "type": "direct", "tag": "direct" }
   ],
   "route": {
+    // 内核自身解析节点域名走直连（替代 1.12 已废弃的 {"outbound": "any"} DNS 规则）
+    "default_domain_resolver": { "server": "dns-direct" },
     "rules": [
-      { "protocol": "dns", "outbound": "dns-out" },
+      // 嗅探：1.11 起从 inbound 搬到路由规则
+      { "inbound": "tun-in", "action": "sniff" },
+      { "protocol": "dns", "action": "hijack-dns" },
       {
         "ip_cidr": ["127.0.0.0/8", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"],
         "outbound": "direct"
       },
-      { "rule_set": ["geosite-ads"], "outbound": "block" },
+      { "rule_set": ["geosite-ads"], "action": "reject" },
       { "rule_set": ["geosite-cn", "geoip-cn"], "outbound": "direct" }
     ],
     "rule_set": [
