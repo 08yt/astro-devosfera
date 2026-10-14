@@ -1,0 +1,218 @@
+---
+title: "极客的私人 AI 工厂：Ollama + n8n + Dify + MCP 四件套 Homelab 全栈部署蓝图 (2026终极收官)"
+author: "毛佳国"
+pubDatetime: 2026-10-11T09:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - Homelab
+  - AI自动化
+  - Ollama
+  - n8n
+  - Dify
+  - MCP
+description: "AI 自动化专题终章收官！汇总 Ollama、Dify、n8n 与 MCP 四大核心基石，提供工业级的一键 Docker Compose 网络编排拓扑、硬件资源分配建议与闭环工作流全景蓝图。"
+---
+
+import { Tweet, YouTube } from "astro-embed";
+
+> 📌 **核心速览 (TL;DR)**
+>
+> - **专题终极目标**：在单一 Homelab 服务器或集群上，打造一个**全链路本地化、零云端依赖、零 API 账单、数据绝对私有**的生产级“私人 AI 制造工厂”。
+> - **四件套各司其职**：
+>   - **Ollama**：底层的 GPU/CPU 高性能大模型与向量 Embedding **计算引擎**；
+>   - **Dify**：知识库切片、Prompt 实验、多模型路由与用户交互的 **AI 操作系统 (Studio)**；
+>   - **n8n**：跨 400+ 系统集成、事件监听、定时调度与业务自动化的 **中枢神经 (Plumbing)**；
+>   - **MCP**：将局域网物理服务器、Docker 容器与宿主机状态安全交付给 AI 的 **通用手脚接口 (Tools)**。
+> - **开箱即用**：提供一套完整的网络互通与安全隔离 `docker-compose.yml` 蓝图，支持从 16G 迷你主机到多卡工作站的平滑伸缩。
+
+---
+
+在过去两周的专题旅程中，我们一步一个脚印，从宏观的选型横评，到 n8n 的生产部署，再到 Ollama 联动、MCP 协议实战、Mem0 长期记忆以及严格的安全审计。
+
+很多朋友问：“这些工具每一个都很强，但如果我想把它们**整合成一套协同运作的完整系统**，它们到底该怎么各司其职？网络怎么布？资源怎么分？”
+
+今天，在这篇专题收官之作中，我们将把所有的拼图严密地拼合在一起，为你奉上这份 **2026 年极客必备的私人 AI 工厂全栈部署蓝图**！
+
+---
+
+## 一、系统全景拓扑图：各层级协同机制
+
+在现代 Homelab 架构中，一个成熟的 AI 自动化体系应该清晰地划分为四层：
+
+```
+┌────────────────────────────────────────────────────────┐
+│                   【表现与交互层】                      │
+│      Web 客户端 / Telegram 机器人 / Claude Desktop     │
+└───────────────────────────┬────────────────────────────┘
+                            │ (HTTPS / Tailscale / 内网)
+                            ▼
+┌────────────────────────────────────────────────────────┐
+│             【调度与业务层】: n8n                      │
+│    - Cron 定时任务 / Webhook 监听                      │
+│    - 跨系统数据整合 (Notion, GitHub, 邮件, NAS)        │
+│    - Human-in-the-loop 审批逻辑                        │
+└──────────────┬──────────────────────────┬──────────────┘
+               │                          │
+        (API / HTTP 调用)          (JSON-RPC / stdio)
+               ▼                          ▼
+┌──────────────────────────────┐  ┌──────────────────────┐
+│     【知识与智能体层】: Dify   │  │   【工具与设备层】: MCP │
+│ - 知识库 RAG (Qdrant 向量)   │  │ - Docker 容器管理    │
+│ - 多模型路由与 Fallback      │  │ - 物理机传感器查询    │
+│ - 会话编排与长期记忆 (Mem0)  │  │ - 本地文件系统安全操作│
+└──────────────┬───────────────┘  └──────────────────────┘
+               │
+        (11434 原生推理)
+               ▼
+┌────────────────────────────────────────────────────────┐
+│             【底层算力引擎】: Ollama                    │
+│   - Qwen 2.5 14B / 32B (日常思考与工具规划)            │
+│   - DeepSeek-R1-Distill (深度推理与代码排错)           │
+│   - BGE-M3 (高维中文多语言向量 Embedding)              │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 二、硬件选型与资源分配建议表 (2026版)
+
+许多玩家在搭建 AI Homelab 时最关心的就是“我的机器带不带得动”。以下是我们根据数百小时实测给出的分级建议：
+
+| 级别配置              | 典型硬件规格                                             | 推荐运行模型与负载                          | 适合玩法                                                |
+| :-------------------- | :------------------------------------------------------- | :------------------------------------------ | :------------------------------------------------------ |
+| **入门级**            | 8代+ Intel 迷你主机 (16G RAM, 纯 CPU)                    | Qwen 2.5 1.5B/7B (Q4) + BGE-Small           | 轻量早报摘要、简单容器监控、小型文档问答                |
+| **甜点级 (极力推荐)** | 迷你主机/PC + RTX 3060 12G / 4060Ti 16G (32G RAM)        | **Qwen 2.5 14B (Q4)** + **BGE-M3**          | 响应迅速 (小于 2s)、多文档复杂 RAG、高频工作流调度          |
+| **终极工作站**        | 双卡 (如 RTX 3090 24G × 2) 或 Mac Studio (64G+ 统一内存) | **Qwen 2.5 32B / 72B** + DeepSeek-R1 满血版 | 复杂的 ReAct 深度推理 Agent、全量代码重构、全家多人并发 |
+
+---
+
+## 三、生产级统一部署蓝图 (`compose.yml`)
+
+我们使用一个顶级的统一 Docker Compose 文件，通过自定义 Bridge 网络将组件打通，同时对外部暴露做严格隔离：
+
+```yaml
+# /opt/ai-factory/compose.yml
+services:
+  # 1. 向量数据库 (存储企业与个人知识库)
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: factory-qdrant
+    restart: unless-stopped
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+    networks:
+      - ai-internal-net
+
+  # 2. n8n 数据库存储
+  n8n-postgres:
+    image: postgres:16-alpine
+    container_name: factory-n8n-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: n8n_admin
+      POSTGRES_PASSWORD: "YOUR_SECURE_PG_PASSWORD"
+      POSTGRES_DB: n8n_db
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks:
+      - ai-internal-net
+
+  # 3. 业务调度中枢 n8n
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: factory-n8n-app
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5678:5678" # 仅本地回环，走反代
+    environment:
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=n8n-postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n_db
+      - DB_POSTGRESDB_USER=n8n_admin
+      - DB_POSTGRESDB_PASSWORD="YOUR_SECURE_PG_PASSWORD"
+      - N8N_HOST=n8n.yourlan.local
+      - N8N_PROTOCOL=https
+      - N8N_ENCRYPTION_KEY="YOUR_SUPER_LONG_RANDOM_KEY_AT_LEAST_32_CHARS"
+      - EXECUTIONS_DATA_MAX_AGE=168
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+    depends_on:
+      - n8n-postgres
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - ai-internal-net
+
+  # 4. 安全 Docker Socket 代理 (阻断写操作，保护宿主机)
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: factory-docker-proxy
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1
+      - INFO=1
+      - POST=0
+      - DELETE=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - ai-internal-net
+
+networks:
+  ai-internal-net:
+    name: ai-internal-net
+    driver: bridge
+```
+
+_(注：Ollama 建议根据上一篇指南原生安装在宿主机或带有显卡驱动的专用容器中，通过 `http://host.docker.internal:11434` 供全网容器共享使用)_。
+
+---
+
+## 四、真实应用：私人 AI 工厂典型一天的工作流
+
+当你搭建好这套系统后，你的数字生活将被这样重新组织：
+
+1. **早晨 07:30 (自动晨报)**：
+   - n8n 触发定时器，抓取 GitHub 星标动态、Hacker News Top 10 与指定技术博客；
+   - 调度 Ollama 中的 `qwen2.5:14b`，按预设模板提炼关键看点；
+   - 自动排版并推送到你的 Telegram 频道。
+2. **上午 10:00 (智能运维巡检)**：
+   - n8n 联合自定义 MCP Server，向 `docker-proxy` 查询全站 20+ 容器健康度与系统负载；
+   - 发现某个离线下载容器内存飙升，AI 自动在群里发送警告卡片，并附带 **“一键清理缓存”** 的授权按钮；
+   - 你在手机上轻点确认，脚本安全执行。
+3. **下午 15:00 (私有知识库实时检索)**：
+   - 你在写代码或排查网络问题，向 Dify 机器人提问：“我们之前配置 Sing-box 的 Reality 目标伪装域名策略是什么？”
+   - Dify 自动使用 `bge-m3` 在本地 Qdrant 检索你过往沉淀的所有笔记与博文，秒级返回带有引用出处的精准解答。
+4. **晚上 23:00 (自动数据归档与记忆固化)**：
+   - 自动化流水线对今日的所有处理日志和重要笔记进行沉淀；
+   - Mem0 提取你今天产生的技术偏好变迁，静默更新用户记忆图谱。
+
+---
+
+## 五、专题总结与写在最后
+
+在 AI 技术以“天”为单位狂飙突进的 2026 年，很多开发者与爱好者常常感到焦虑：商业大模型的功能越来越强，我们普通人还能做些什么？
+
+**答案是：把数据、算力和控制权重新夺回自己手中。**
+
+商业云端模型再强大，它终究是一座处于别人高墙内的“黑盒”。而通过今天我们搭建的这套 **开源、可审、可控的私人 AI 工厂**，你的每一条自动化流水线、每一次记忆沉淀、每一篇私有文档，都踏踏实实地沉淀在属于你自己的物理硬件上。
+
+这是数字时代极客最大的底气，也是 Homelab 精神在这个智能体时代最浪漫的注脚。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+**Q：整个四件套全部跑起来，冷机待机占用多少内存？**
+
+A：在不加载大模型（模型未推理）的状态下，PostgreSQL + Qdrant + n8n + Dify 基础后台组件合计占用内存仅约 **1.5GB – 2.2GB**，非常轻量。显存与高内存占用仅在 Ollama 推理或模型常驻时发生（可通过 `OLLAMA_KEEP_ALIVE=5m` 设置空闲 5 分钟自动释放显存）。
+
+**Q：为什么不把所有东西塞进一个超大的 All-in-One 镜像里？**
+
+A：微服务架构的核心价值在于**解耦与容错**。如果写在一个大容器里，某个组件崩溃（例如 Ollama 显存溢出）会导致调度器和数据库跟着挂掉。通过 Docker Compose 分离服务，n8n 或数据库可以数月不重启，单独升级 Ollama 也不影响已有数据的完整性。
+
+**Q：这套架构后续如何备份与跨机器迁移？**
+
+A：得益于清晰的目录映射：只要备份 `./data/` 目录以及对应数据库的 `.dump` 导出文件，到任何一台新的 Linux 机器上，执行 `docker compose up -d`，整座 AI 工厂即可在几分钟内完好无损地原地复活！

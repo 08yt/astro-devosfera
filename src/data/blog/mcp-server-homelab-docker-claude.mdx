@@ -1,0 +1,227 @@
+---
+title: "让 Claude / ChatGPT 直接管理你的 Homelab：用 Python 开发自定义 MCP Server 实战"
+author: "毛佳国"
+pubDatetime: 2026-10-08T09:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - MCP
+  - Python
+  - Docker
+  - Homelab
+  - 运维自动化
+description: "拒绝死记繁琐的 docker 命令！手把手教你使用官方 Python FastMCP 框架，在 50 行代码内打造一个属于你自己的 Homelab MCP Server，实现通过 Claude Desktop 用自然语言查询容器状态、抓取日志与安全运维。"
+---
+
+import { Tweet, YouTube } from "astro-embed";
+
+> 📌 **核心速览 (TL;DR)**
+>
+> - **为什么写自定义 MCP**：虽然社区有现成工具，但每个人 Homelab 的网络、敏感服务与权限边界各不相同。自己写几十行 Python 能够实现**按需定制、严格权限隔离与最小特权暴露**。
+> - **开发利器**：采用官方推荐的 `FastMCP` (基于 Python)，极简装饰器语法 `@mcp.tool()`，自动生成符合 JSON-RPC 2.0 规范的参数校验与元数据。
+> - **实战落地**：编写一个能安全列出 Docker 容器状态、抓取最近日志报错以及检查机器内存磁盘的轻量级 MCP Server，并接入 Claude Desktop。
+> - **安全铁律**：永远坚持**只读优先 (Read-First)** 原则，禁止让无保护的 AI 拥有删除容器或格式化磁盘的高危操作权限。
+
+---
+
+在上一篇 [《AI 的 USB-C 接口：2026 年 MCP 协议完全指南》](/posts/mcp-model-context-protocol-homelab-guide/) 中，我们搞清楚了 Model Context Protocol (MCP) 的核心理念与通信机制。
+
+很多极客在看完后都会跃跃欲试：社区里虽然有一些开源的 Docker MCP 插件，但往往功能过于庞杂，甚至默认提供了 `docker rm -f`、`docker stop` 等极度危险的写权限。一旦 AI 在多轮对话中产生了幻觉，或者我们在调试提示词时发生误触发，家里的核心服务可能瞬间被“一锅端”。
+
+今天，我们就用 Python 官方最新的 **FastMCP** 框架，写一个轻量、安全、量身定制的 **Homelab MCP Server**。
+
+---
+
+## 一、环境准备与依赖安装
+
+我们使用现代 Python 虚拟环境管理工具（推荐 `uv` 或标准的 `venv`）：
+
+```bash
+# 创建独立工作目录
+mkdir -p ~/homelab-mcp && cd ~/homelab-mcp
+
+# 创建并激活虚拟环境
+python3 -m venv .venv
+source .venv/bin/activate
+
+# 安装 MCP 官方 SDK 与 Docker 客户端库
+pip install "mcp[cli]" docker psutil
+```
+
+### 为什么选择 `FastMCP`？
+
+以前写一个支持 JSON-RPC 握手、工具参数 Schema 生成的服务端需要手写许多模板代码。而 `FastMCP` 将这一切浓缩成了类似 FastAPI 的现代化装饰器语法，几行代码就能完成一个带严谨入参类型的 AI 工具。
+
+---
+
+## 二、编写核心服务：`server.py`
+
+在 `~/homelab-mcp/server.py` 中写入以下代码。我们实现三个最常用且安全的功能：
+
+1. **`list_containers`**：查看当前所有容器的运行状态和健康检查；
+2. **`get_container_logs`**：指定容器名称，抓取最近 N 行日志（排错神器）；
+3. **`get_system_stats`**：获取宿主机 CPU、内存与磁盘使用率。
+
+```python
+#!/usr/bin/env python3
+"""
+Homelab Custom MCP Server
+提供宿主机健康监控与只读 Docker 查询能力
+"""
+
+from mcp.server.fastmcp import FastMCP
+import docker
+import psutil
+
+# 初始化 MCP 服务
+mcp = FastMCP("homelab-ops-assistant")
+
+# 连接本地 Docker 守护进程
+try:
+    docker_client = docker.from_env()
+except Exception as e:
+    docker_client = None
+
+@mcp.tool()
+def get_system_stats() -> dict:
+    """获取当前 Homelab 宿主机的 CPU 使用率、物理内存与磁盘使用情况。"""
+    cpu_percent = psutil.cpu_percent(interval=1)
+    memory = psutil.virtual_memory()
+    disk = psutil.disk_usage('/')
+
+    return {
+        "cpu_usage_percent": cpu_percent,
+        "memory_total_gb": round(memory.total / (1024 ** 3), 2),
+        "memory_used_gb": round(memory.used / (1024 ** 3), 2),
+        "memory_percent": memory.percent,
+        "disk_total_gb": round(disk.total / (1024 ** 3), 2),
+        "disk_free_gb": round(disk.free / (1024 ** 3), 2),
+        "disk_percent": disk.percent
+    }
+
+@mcp.tool()
+def list_containers(all: bool = False) -> list[dict]:
+    """
+    列出当前服务器上的 Docker 容器状态。
+    :param all: 是否包含已停止退出的容器，默认 False 仅显示运行中容器
+    """
+    if not docker_client:
+        return [{"error": "Docker 守护进程不可用，请检查 /var/run/docker.sock 权限"}]
+
+    containers = docker_client.containers.list(all=all)
+    result = []
+    for c in containers:
+        result.append({
+            "name": c.name,
+            "image": c.image.tags[0] if c.image.tags else c.short_id,
+            "status": c.status,
+            "created": c.attrs.get("Created", "")[:19]
+        })
+    return result
+
+@mcp.tool()
+def get_container_logs(container_name: str, tail_lines: int = 50) -> str:
+    """
+    获取指定容器的最新控制台标准输出日志。
+    :param container_name: 目标容器名称 (如 jellyfin, sing-box, n8n-app)
+    :param tail_lines: 读取的尾部行数，默认 50 行，最大限制 200 行
+    """
+    if not docker_client:
+        return "Docker 服务不可用"
+
+    # 防御性限制，避免上下文爆炸
+    tail = min(max(tail_lines, 10), 200)
+
+    try:
+        container = docker_client.containers.get(container_name)
+        logs = container.logs(tail=tail, timestamps=True).decode('utf-8', errors='replace')
+        return logs if logs else "容器运行中，但无近期日志输出。"
+    except docker.errors.NotFound:
+        return f"错误：未找到名为 '{container_name}' 的容器，请先调用 list_containers 检查名称。"
+    except Exception as e:
+        return f"获取日志失败: {str(e)}"
+
+if __name__ == "__main__":
+    # 使用 stdio 标准传输模式启动
+    mcp.run(transport='stdio')
+```
+
+---
+
+## 三、本地命令行自测服务
+
+在对接 Claude Desktop 之前，我们可以直接使用 MCP CLI 内置的 Inspector 进行可视化测试：
+
+```bash
+# 启动本地 Inspector 调试器
+mcp dev server.py
+```
+
+终端会输出一个本地网页地址（通常为 `http://localhost:5173`），打开后可以在网页上清晰看到我们注册的三个工具，点击执行即可查看 JSON-RPC 交互返回结果！
+
+---
+
+## 四、接入 Claude Desktop 客户端
+
+### 1. 修改 Claude Desktop 配置文件
+
+打开 Claude Desktop 的配置文件：
+
+- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+在 `mcpServers` 块中加入我们的自定义配置（**注意替换成你机器上的绝对路径**）：
+
+```json
+{
+  "mcpServers": {
+    "homelab": {
+      "command": "/Users/yourusername/homelab-mcp/.venv/bin/python",
+      "args": ["/Users/yourusername/homelab-mcp/server.py"]
+    }
+  }
+}
+```
+
+> 💡 **避坑技巧**：`command` 务必填写虚拟环境内 Python 二进制的**绝对路径**，避免系统因 PATH 环境变量缺失找不到三方库。
+
+### 2. 体验自然语言智能运维
+
+完全重启 Claude Desktop，新建一个对话，直接向它提问：
+
+> 🗣️ **“帮我检查一下现在服务器的资源占用情况，另外看一下最近运行的容器有哪些？”**
+
+你会看到 Claude 界面上浮现出：
+
+- 🔨 _Calling tool: `get_system_stats`_
+- 🔨 _Calling tool: `list_containers`_
+
+随后，Claude 会以极其专业、条理清晰的口吻向你汇报：
+
+> “目前您的 Homelab 宿主机 CPU 占用率为 8.5%，内存已使用 6.2GB / 16GB (38.7%)，磁盘剩余空间充裕。正在运行的容器共有 6 个，包括 `sing-box`、`n8n-app`、`jellyfin` 等，全部处于 healthy 正常运行状态。”
+
+---
+
+## 五、进阶思考：权限分级与危险操作防护
+
+如果你后续想给 MCP Server 增加重启操作（如 `restart_container`），务必遵循以下**安全三原则**：
+
+1. **白名单机制**：绝不接收任意名称，只允许重启特定非关键业务容器；
+2. **拒绝毁灭性命令**：绝不在 MCP 中暴露 `rm`、`prune` 或执行任意 bash 命令的工具；
+3. **隔离部署**：如果运行在 Linux 服务器上，可以将该 Python 脚本本身作为一个独立的只读 Docker 容器运行，挂载只读的 Docker socket (`/var/run/docker.sock:ro`)。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+**Q：为什么启动 Claude Desktop 后看不到小锤子图标？**
+
+A：通常是配置路径或 JSON 格式错误。排查步骤：① 检查 `claude_desktop_config.json` 是否有多余或漏掉的逗号；② 检查是否使用了 Python 虚拟环境的绝对路径；③ 查看 Claude Desktop 日志：macOS 位于 `~/Library/Logs/Claude/mcp*.log`。
+
+**Q：普通用户运行 Docker 报 Permission Denied 怎么处理？**
+
+A：这是因为你的当前系统用户不在 `docker` 用户组中。执行 `sudo usermod -aG docker $USER`，重新登录终端后再启动服务即可；或者检查 `/var/run/docker.sock` 的属组权限。
+
+**Q：除了 Claude Desktop，这个 Server 能给 VS Code 或 Cursor 用吗？**
+
+A：完全可以！最新版的 Cursor 和配备了 MCP 扩展的 VS Code 均支持标准的 MCP `stdio` 配置。配置文件格式完全兼容，一份代码，到处可用。
