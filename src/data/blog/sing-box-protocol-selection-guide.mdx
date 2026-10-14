@@ -1,0 +1,122 @@
+---
+title: "VLESS-Reality / Hysteria2 / TUIC / WireGuard 怎么选？2026 协议选型终极指南"
+author: "毛佳国"
+pubDatetime: 2026-10-14T14:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - Sing-box
+  - 选购指南
+description: "Sing-box 支持的协议太多挑花眼？本文横评 VLESS-Reality、Hysteria2、TUIC、WireGuard、Shadowsocks 2022 的延迟、速度、抗封锁与耗电，附一句话选型结论。"
+---
+
+协议选错，努力白费。跑同样的 VPS，VLESS-Reality 和 Hysteria2 的体验能差出一个档。本文把 Sing-box 主流协议一次讲透，帮你选对。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **无脑选**：VLESS-Reality——抗封锁最强，生态最成熟，90% 人闭眼入。
+> - **要速度**：Hysteria2——弱网/晚高峰表现最好，带宽跑满。
+> - **要稳定低延迟**：TUIC——UDP 原生，游戏/视频通话首选。
+> - **组网**：WireGuard——异地组网、旁路由，不是翻墙主力。
+> - 一句话：先 VLESS-Reality 保底，再按需加 Hysteria2。
+
+---
+
+## ⚔️ 横评总表
+
+| 维度 | VLESS-Reality | Hysteria2 | TUIC | WireGuard | SS 2022 |
+|---|---|---|---|---|---|
+| **抗封锁** | 🏆 极强 | 强 | 强 | 弱（特征明显） | 中 |
+| **速度上限** | 高 | 🏆 极高 | 高 | 高 | 中 |
+| **弱网表现** | 中 | 🏆 极好 | 好 | 差 | 中 |
+| **延迟** | 低 | 低 | 🏆 极低 | 低 | 低 |
+| **耗电/流量** | 省 | 较费电 | 中 | 省 | 省 |
+| **配置难度** | 中 | 低 | 中 | 低 | 低 |
+| **客户端支持** | 🏆 最全 | 全 | 较全 | 全 | 全 |
+
+---
+
+## 🔍 逐个讲透
+
+### VLESS-Reality：抗封锁之王
+
+原理：伪装成正常 TLS 流量去访问一个真实存在的网站（如微软、苹果官网），没有域名、不用证书，检测方看到的就是"你在浏览官网"。
+
+- **适合**：所有人，尤其封锁严的地区、长期主力线路
+- **注意**：`server_name` 选国外大站，`short_id`、`fingerprint` 配对；时间必须同步（见 [《排错总纲》](/posts/sing-box-troubleshooting-guide/)）
+- 教程：[《VLESS-Reality 部署》](/posts/vps-singbox-vless-reality/)
+
+### Hysteria2：速度机器
+
+基于 QUIC 的暴力加速协议，弱网环境下能把带宽榨干，晚高峰看 4K 的救星。
+
+- **适合**：对速度要求高、网络质量差（丢包高）、大流量用户
+- **注意**：必须 UDP 端口；服务端开了端口跳跃客户端也要配；手机上相对费电
+- 教程：[《Hysteria2 端口跳跃优化》](/posts/hysteria2-port-hopping-optimization/)
+
+### TUIC：低延迟专精
+
+同样基于 QUIC，但更侧重稳定低延迟，UDP 转发原生支持好。
+
+- **适合**：游戏、视频通话、远程桌面
+- **注意**：v5 版本需要较新的客户端内核（SFI/SFM 跟上最新版）
+- 教程：[《TUIC + Hysteria2 指南》](/posts/sing-box-tuic-hysteria2-guide/)
+
+### WireGuard：组网工具人
+
+速度快、配置简单，但流量特征明显，**不适合做翻墙主力**。它的主场是异地组网：连回家里的 NAS、旁路由、公司内网。
+
+- **适合**：异地组网、固定点对点隧道
+- 对比：[《WireGuard vs Tailscale vs ZeroTier》](/posts/wireguard-vs-tailscale-vs-zerotier/)
+
+### Shadowsocks 2022：轻量备选
+
+配置最简单，资源占用最低，适合性能弱的设备（如老路由器）做备用线路。抗封锁一般，别当主力。
+
+---
+
+## 🧭 选型决策树
+
+```
+第一次建站 / 不想折腾
+└──→ VLESS-Reality（闭眼入）
+
+已经有 Reality，想更快
+└──→ 加一条 Hysteria2（双协议并存，客户端分组切换）
+
+打游戏 / 视频会议卡
+└──→ TUIC（UDP 低延迟）
+
+异地连家里 NAS / 公司内网
+└──→ WireGuard（组网专用）
+
+老路由器 / 备用线路
+└──→ Shadowsocks 2022（轻量）
+```
+
+**进阶玩法**：一个 VPS 跑多协议（Reality + Hysteria2 共存），客户端里分组，日常 Reality、看片切 Hysteria2。见 [《VPS 部署》](/posts/vps-singbox-vless-reality/) 和 [《多订阅管理》](/posts/desktop-clients-advanced-tips/)。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 机场订阅需要关心协议吗？
+
+**答**：需要。买之前看机场支持什么协议：只有 SS 的别买（2026 年不够用）；有 Reality/Hysteria2 的优先。好协议+烂线路也白搭，线路质量看 [《选型总纲》](/posts/sing-box-vs-clash-meta/) 的思路。
+
+### Q2: Hysteria2 和 TUIC 都是 QUIC，到底差在哪？
+
+**答**：简单说：Hysteria2 为"跑满带宽"优化（暴力拥塞控制），TUIC 为"稳定低延迟"优化。下载看片选前者，游戏通话选后者。
+
+### Q3: Reality 会被"喝茶"吗？
+
+**答**：Reality 本身不泄露代理特征，看到的是正常 HTTPS 流量。但任何代理都不提供法律上的匿名性，合规使用。
+
+### Q4: 协议会过时吗？需要追新吗？
+
+**答**：VLESS-Reality 从 2023 火到 2026，生命力极强。不用追每个新协议，把主力协议的配置调优做好更实在。
+
+---
+
+_（总纲阅读：[《Sing-box 全平台小白入门指南》](/posts/sing-box-beginner-guide/)；连不上看 [《排错总纲》](/posts/sing-box-troubleshooting-guide/)；客户端看 [《下载页》](/download/)。）_

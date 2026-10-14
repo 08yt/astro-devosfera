@@ -1,0 +1,327 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import Header from "@/components/Header.astro";
+import Footer from "@/components/Footer.astro";
+import BackButton from "@/components/BackButton.astro";
+
+type Client = {
+  name: string;
+  desc: string;
+  badges: string[];
+  download: { label: string; url: string };
+  tutorial?: string;
+  github?: string;
+};
+
+type OSSection = {
+  id: string;
+  title: string;
+  note?: string;
+  clients: Client[];
+};
+
+const sections: OSSection[] = [
+  {
+    id: "windows",
+    title: "Windows",
+    clients: [
+      {
+        name: "GUI.for.SingBox",
+        desc: "社区最火的 Sing-box 桌面客户端，订阅导入方便，TUN/系统代理一键切换，小白 5 分钟上手。",
+        badges: ["推荐", "免费开源"],
+        download: { label: "GitHub Releases", url: "https://github.com/GUI-for-SingBox/GUI.for.SingBox/releases" },
+        tutorial: "/posts/gui-for-singbox-tutorial/",
+        github: "https://github.com/GUI-for-SingBox/GUI.for.SingBox",
+      },
+      {
+        name: "sing-box-windows",
+        desc: "功能最激进的 Windows 客户端：1.14 内核、TUN DNS 接管三档、Web Dashboard，适合极客。",
+        badges: ["免费开源"],
+        download: { label: "GitHub Releases", url: "https://github.com/xinggaoya/sing-box-windows/releases" },
+        tutorial: "/posts/sing-box-windows-client-guide/",
+        github: "https://github.com/xinggaoya/sing-box-windows",
+      },
+      {
+        name: "Hiddify",
+        desc: "全平台通用客户端，Windows/macOS/Android/iOS/Linux 一套操作逻辑，换设备零学习成本。",
+        badges: ["免费开源", "全平台"],
+        download: { label: "GitHub Releases", url: "https://github.com/hiddify/hiddify-app/releases" },
+        github: "https://github.com/hiddify/hiddify-app",
+      },
+    ],
+  },
+  {
+    id: "macos",
+    title: "macOS",
+    clients: [
+      {
+        name: "SFM（sing-box for macOS）",
+        desc: "官方 macOS 客户端，TUN 体验最好，终端命令全接管；Homebrew 一行安装，不依赖 App Store。",
+        badges: ["官方", "推荐", "免费"],
+        download: { label: "Homebrew / Releases", url: "https://github.com/SagerNet/sing-box/releases" },
+        tutorial: "/posts/sing-box-macos-sfm-guide/",
+        github: "https://github.com/SagerNet/sing-box",
+      },
+      {
+        name: "Hiddify",
+        desc: "跨平台备选，界面统一，适合多设备混用的用户。",
+        badges: ["免费开源"],
+        download: { label: "GitHub Releases", url: "https://github.com/hiddify/hiddify-app/releases" },
+        github: "https://github.com/hiddify/hiddify-app",
+      },
+    ],
+  },
+  {
+    id: "ios",
+    title: "iOS / iPadOS",
+    note: "以下 App 均需非国区 Apple ID。",
+    clients: [
+      {
+        name: "SFI（sing-box for iOS）",
+        desc: "官方 iOS 客户端，内核最新，新协议支持最全；远程订阅、TUN、按需连接开箱即用。",
+        badges: ["官方", "推荐", "免费"],
+        download: { label: "App Store / TestFlight", url: "https://sing-box.sagernet.org/clients/apple/" },
+        tutorial: "/posts/sing-box-ios-sfi-guide/",
+        github: "https://github.com/SagerNet/sing-box",
+      },
+      {
+        name: "Streisand",
+        desc: "免费 iOS 客户端，协议支持全面，SFI 下架期的好备选。",
+        badges: ["免费"],
+        download: { label: "App Store 搜索", url: "https://apps.apple.com/us/app/streisand/id6450534064" },
+      },
+      {
+        name: "Shadowrocket（小火箭）",
+        desc: "iOS 老牌代理工具，买断制，协议兼容广，规则生态成熟。",
+        badges: ["付费"],
+        download: { label: "App Store 搜索", url: "https://apps.apple.com/" },
+        tutorial: "/posts/singbox-ios-clients-comparison-shadowrocket-loon-surge-stash/",
+      },
+      {
+        name: "Loon / Surge / Stash",
+        desc: "脚本与 MitM 抓包能力最强的三款，适合有高级玩法需求的用户，均为付费。",
+        badges: ["付费", "脚本强大"],
+        download: { label: "App Store 搜索", url: "https://apps.apple.com/" },
+        tutorial: "/posts/singbox-ios-clients-comparison-shadowrocket-loon-surge-stash/",
+      },
+    ],
+  },
+  {
+    id: "android",
+    title: "Android",
+    clients: [
+      {
+        name: "SFA（sing-box for Android）",
+        desc: "官方 Android 客户端，TUN 经系统 VPN 实现，内核与配置格式同桌面端完全统一。",
+        badges: ["官方", "推荐", "免费"],
+        download: { label: "GitHub Releases", url: "https://github.com/SagerNet/sing-box/releases" },
+        github: "https://github.com/SagerNet/sing-box",
+      },
+      {
+        name: "NekoBox",
+        desc: "Android 上最受欢迎的第三方客户端之一，界面友好，更新活跃。",
+        badges: ["免费开源"],
+        download: { label: "GitHub Releases", url: "https://github.com/MatsuriDayo/NekoBoxForAndroid/releases" },
+        github: "https://github.com/MatsuriDayo/NekoBoxForAndroid",
+      },
+      {
+        name: "Hiddify",
+        desc: "跨平台，操作逻辑统一，适合与电脑用同一套习惯的用户。",
+        badges: ["免费开源"],
+        download: { label: "GitHub Releases", url: "https://github.com/hiddify/hiddify-app/releases" },
+        github: "https://github.com/hiddify/hiddify-app",
+      },
+      {
+        name: "Karing",
+        desc: "新兴全平台客户端，界面现代，迭代速度快。",
+        badges: ["免费开源"],
+        download: { label: "GitHub Releases", url: "https://github.com/KaringX/karing/releases" },
+        github: "https://github.com/KaringX/karing",
+      },
+    ],
+  },
+  {
+    id: "linux",
+    title: "Linux",
+    clients: [
+      {
+        name: "sing-box 内核",
+        desc: "官方命令行版本，服务器与桌面通用；配合 systemd 常驻，Docker 部署见站内教程。",
+        badges: ["官方", "免费开源"],
+        download: { label: "GitHub Releases", url: "https://github.com/SagerNet/sing-box/releases" },
+        tutorial: "/posts/sing-box-docker-deployment-guide/",
+        github: "https://github.com/SagerNet/sing-box",
+      },
+      {
+        name: "GUI.for.SingBox",
+        desc: "桌面 Linux 的图形选择，AppImage/DEB 包开箱即用。",
+        badges: ["免费开源"],
+        download: { label: "GitHub Releases", url: "https://github.com/GUI-for-SingBox/GUI.for.SingBox/releases" },
+        github: "https://github.com/GUI-for-SingBox/GUI.for.SingBox",
+      },
+      {
+        name: "Hiddify",
+        desc: "Linux 图形客户端备选，与其他平台操作一致。",
+        badges: ["免费开源"],
+        download: { label: "GitHub Releases", url: "https://github.com/hiddify/hiddify-app/releases" },
+        github: "https://github.com/hiddify/hiddify-app",
+      },
+    ],
+  },
+  {
+    id: "router",
+    title: "路由器 / 电视",
+    clients: [
+      {
+        name: "OpenWrt 手动部署",
+        desc: "软路由原生跑 sing-box TProxy，全家设备免客户端，站内有保姆级教程。",
+        badges: ["免费开源", "教程"],
+        download: { label: "看部署教程", url: "/posts/openwrt-singbox-tproxy/" },
+        tutorial: "/posts/openwrt-singbox-tproxy/",
+      },
+      {
+        name: "SFT（Apple TV）",
+        desc: "官方 tvOS 客户端，tvOS 17+，电视盒子直接用。",
+        badges: ["官方", "免费"],
+        download: { label: "App Store（非国区）", url: "https://sing-box.sagernet.org/clients/apple/" },
+        tutorial: "/posts/apple-tv-singbox-tvos-setup-guide/",
+      },
+    ],
+  },
+];
+
+const badgeColor: Record<string, string> = {
+  "官方": "bg-accent/15 text-accent border-accent/30",
+  "推荐": "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
+  "免费": "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+  "免费开源": "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30",
+  "付费": "bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/30",
+  "全平台": "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30",
+  "脚本强大": "bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-500/30",
+  "教程": "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/30",
+};
+---
+
+<Layout title="Sing-box 客户端下载 | 全平台 Windows / macOS / iOS / Android">
+  <Header />
+
+  <main id="main-content" class="relative app-layout pb-12 pt-8">
+    <div class="mb-4">
+      <BackButton />
+    </div>
+
+    <div class="mb-6 flex items-center gap-3">
+      <h1 class="text-3xl font-bold tracking-tight sm:text-4xl text-foreground">
+        客户端下载
+      </h1>
+      <div class="h-px flex-1 bg-border/20 mt-2"></div>
+    </div>
+
+    <p class="mb-6 text-foreground/80 leading-relaxed text-lg">
+      全平台 Sing-box 客户端推荐与下载导航。版本号更新快，本页不列具体版本号——<strong>一律以 Releases / App Store 页面为准</strong>。更新于 2026-10。
+    </p>
+
+    <!-- OS quick nav -->
+    <nav class="mb-10 flex flex-wrap gap-2" aria-label="按系统筛选">
+      {
+        sections.map((s) => (
+          <a
+            href={`#${s.id}`}
+            class="rounded-full border border-border/30 bg-muted/20 px-4 py-1.5 text-sm font-medium text-foreground/80 transition-colors hover:border-accent/50 hover:text-accent"
+          >
+            {s.title}
+          </a>
+        ))
+      }
+    </nav>
+
+    {
+      sections.map((section) => (
+        <section id={section.id} class="mb-12 scroll-mt-24">
+          <h2 class="mb-1 text-2xl font-bold tracking-tight text-foreground">
+            {section.title}
+          </h2>
+          {section.note && (
+            <p class="mb-4 text-sm text-foreground/60">{section.note}</p>
+          )}
+          <ul class="mt-4 grid grid-cols-1 gap-5 md:grid-cols-2">
+            {section.clients.map((client) => (
+              <li class="relative flex flex-col rounded-2xl border border-border/25 p-5 transition-all duration-300 hover:-translate-y-1 hover:border-accent/40 hover:shadow-lg hover:shadow-accent/10">
+                <div class="mb-2 flex flex-wrap items-center gap-2">
+                  <h3 class="text-lg font-bold tracking-tight text-foreground">
+                    {client.name}
+                  </h3>
+                </div>
+                <div class="mb-3 flex flex-wrap gap-1.5">
+                  {client.badges.map((b) => (
+                    <span
+                      class={`rounded-full border px-2.5 py-0.5 text-xs font-medium ${badgeColor[b] ?? "bg-muted/20 text-foreground/70 border-border/30"}`}
+                    >
+                      {b}
+                    </span>
+                  ))}
+                </div>
+                <p class="mb-4 flex-1 text-sm leading-relaxed text-foreground/70">
+                  {client.desc}
+                </p>
+                <div class="flex flex-wrap items-center gap-2">
+                  <a
+                    href={client.download.url}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    class="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                  >
+                    {client.download.label} →
+                  </a>
+                  {client.tutorial && (
+                    <a
+                      href={client.tutorial}
+                      class="rounded-lg border border-border/30 px-4 py-2 text-sm font-medium text-foreground/80 transition-colors hover:border-accent/50 hover:text-accent"
+                    >
+                      使用教程
+                    </a>
+                  )}
+                  {client.github && (
+                    <a
+                      href={client.github}
+                      target="_blank"
+                      rel="noopener noreferrer nofollow"
+                      class="rounded-lg border border-border/30 px-3 py-2 text-sm text-foreground/60 transition-colors hover:border-accent/50 hover:text-accent"
+                      title="GitHub 仓库"
+                    >
+                      GitHub
+                    </a>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))
+    }
+
+    <!-- FAQ -->
+    <section class="mb-8 rounded-2xl border border-border/25 p-6">
+      <h2 class="mb-4 text-xl font-bold text-foreground">常见问题</h2>
+      <div class="space-y-4 text-sm leading-relaxed text-foreground/75">
+        <div>
+          <p class="font-semibold text-foreground">Q：小白第一台设备装哪个？</p>
+          <p>A：Windows 装 GUI.for.SingBox，macOS 装 SFM（brew），iPhone 装 SFI，安卓装 SFA——认准带「推荐」徽标的，都是官方或社区口碑最好的。</p>
+        </div>
+        <div>
+          <p class="font-semibold text-foreground">Q：下载的版本怎么选？</p>
+          <p>A：Releases 页按系统和架构选（Windows-x64、macOS-arm64 等）；跟随最新稳定版即可，1.14+ 注意配置写法变化，见 <a class="text-accent hover:underline" href="/posts/sing-box-114-migration-guide/">1.14 升级指南</a>。</p>
+        </div>
+        <div>
+          <p class="font-semibold text-foreground">Q：iOS 提示"不在你所在的地区提供"？</p>
+          <p>A：需要非国区 Apple ID，这是苹果政策。详见 <a class="text-accent hover:underline" href="/posts/apple-singbox-clients-overview/">Apple 全家桶总览</a>。</p>
+        </div>
+        <div>
+          <p class="font-semibold text-foreground">Q：客户端装好了然后呢？</p>
+          <p>A：接着需要节点订阅：自建看 <a class="text-accent hover:underline" href="/posts/vps-singbox-vless-reality/">VPS 部署教程</a>，机场订阅转换看 <a class="text-accent hover:underline" href="/posts/convert-clash-to-singbox/">订阅转换总纲</a>。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+  <Footer />
+</Layout>

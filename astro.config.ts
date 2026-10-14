@@ -22,7 +22,15 @@ export default defineConfig({
       extendMarkdownConfig: true,
     }),
     sitemap({
-      filter: page => SITE.showArchives || !page.endsWith("/archives"),
+      filter: page => {
+        // 归档页可选
+        if (!SITE.showArchives && page.endsWith("/archives")) return false;
+        // 站内搜索页不收录
+        if (page.endsWith("/search/")) return false;
+        // 列表分页不收录（/posts/2/、/tags/xxx/2/），避免重复内容
+        if (/\/\d+\/$/.test(page)) return false;
+        return true;
+      },
     }),
   ],
   markdown: {

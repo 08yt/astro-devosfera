@@ -1,13 +1,13 @@
 ---
 title: "客厅娱乐终极形态：2026 最新软路由 OpenWrt 原生部署 Sing-box (Tproxy) 透明代理保姆级教程"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-06-05T10:00:00.000+08:00
 featured: true
 draft: false
 tags:
   - 拓展教程
-  - OpenWrt
-  - 透明代理
+  - 软路由
+  - 规则进阶
 description: "软路由与家庭宽带受众首选！手把手教你在 OpenWrt 路由器上原生部署轻量、低延迟的 Sing-box Tproxy 透明代理，实现全家设备免客户端科学上网。"
 ---
 
@@ -37,33 +37,40 @@ description: "软路由与家庭宽带受众首选！手把手教你在 OpenWrt 
       "type": "tproxy",
       "tag": "tproxy-in",
       "listen": "::",
-      "listen_port": 7893,
-      "sniff": true,
-      "sniff_override_destination": true
+      "listen_port": 7893
     }
   ],
   "dns": {
     "servers": [
       {
         "tag": "dns-direct",
-        "address": "223.5.5.5",
+        "type": "udp",
+        "server": "223.5.5.5",
         "detour": "direct"
       },
       {
         "tag": "dns-proxy",
-        "address": "https://1.1.1.1/dns-query",
+        "type": "https",
+        "server": "1.1.1.1",
         "detour": "proxy"
       }
     ],
     "rules": [
       {
         "rule_set": ["geosite-cn"],
+        "action": "route",
         "server": "dns-direct"
       }
     ]
   },
   "route": {
     "rules": [
+      // 1.11+ 嗅探从 inbound 搬到路由规则（替代旧 "sniff": true 写法）
+      {
+        "inbound": "tproxy-in",
+        "action": "sniff",
+        "timeout": "1s"
+      },
       {
         "ip_cidr": [
           "127.0.0.0/8",
@@ -122,7 +129,50 @@ nft add rule ip singbox prerouting meta l4proto { tcp, udp } tproxy to :7893 met
 
 ---
 
-## ❓ 常见问题与 AI 快问快答 (FAQ)
+## 📦 Sing-box 装进 OpenWrt 的三种姿势
+
+| 方式 | 适合 | 说明 |
+|---|---|---|
+| opkg 安装 | 有软件源 | `opkg update && opkg install sing-box`，版本可能旧 |
+| 手动下载 release | 要最新版 | 从 GitHub Release 下对应架构（x86_64 / aarch64）的 `.tar.gz`，解压到 `/usr/bin` |
+| 编译进固件 | 重度玩家 | 用 OpenWrt SDK 打包，开机即用 |
+
+新手推荐手动下载 release：版本新、步骤少，升级时换个二进制就行。
+
+---
+
+## 🧠 TProxy / TUN / 旁路由，怎么选？
+
+- **TProxy（本文）**：主路由原生部署，性能最好，UDP 完美，适合把 OpenWrt 当主路由。
+- **TUN**：旁路由或单设备，配置简单，但多一层虚拟网卡开销。
+- **OpenClash 这类插件**：图形界面省心，但内存占用大、更新慢。
+
+主路由性能吃紧（如 128MB 内存的老机器）优先 TProxy；想省事用插件也行，别纠结。
+
+---
+
+## 🌐 IPv6 与 DNS 劫持：两个必做项
+
+**IPv6**：如果光猫下发了 IPv6，nftables 规则要加 `ip6` 表，否则 v6 流量裸奔。没 v6 环境直接在 OpenWrt 里关掉 IPv6，最省心。
+
+**DNS 劫持**：很多 App 硬编码 `8.8.8.8`，绕过你的 DNS 配置。在 nftables 里把目标端口 53 的流量重定向到 Sing-box 的 DNS 入站：
+
+```bash
+nft add rule ip singbox prerouting meta l4proto { tcp, udp } th dport 53 redirect to :5353
+```
+
+并在 Sing-box 里加一个监听 5353 的 `direct` DNS 入站做承接。
+
+---
+
+## 🔧 TProxy 不生效的排查清单
+
+1. `ip rule show` 有没有 `fwmark 1 lookup 100`？
+2. `ip route show table 100` 有没有 `local default dev lo`？
+3. Sing-box 日志有没有 `tproxy` 监听成功的行？
+4. 防火墙放行了 7893 端口吗？
+
+90% 的翻车是第 1、2 步的 mark 没打上，逐条执行 nft 命令看回显，别直接粘整个脚本。
 
 ### Q1: 全家设备接入透明代理，看 4K 视频流量暴涨怎么办？
 
@@ -132,6 +182,15 @@ nft add rule ip singbox prerouting meta l4proto { tcp, udp } tproxy to :7893 met
 
 **答**：请确保在 `dns.rules` 中将 Apple 探针域名（如 `captive.apple.com`）放行直连，避免连通性测试被误导向代理。
 
+### Q3: 软路由内存只有 256MB，跑得动吗？
+
+**答**：Sing-box 本体内存占用 15MB 左右，加上规则集缓存，256MB 足够。把不需要的 rule_set 精简掉（如只留 geosite-cn/geoip-cn），别全量加载。
+
+### Q4: 升级 Sing-box 后要重写 nftables 脚本吗？
+
+**答**：不用。nftables 规则和 Sing-box 版本无关，只要 tproxy 监听端口（7893）和 fwmark（1）没变，升级只换二进制文件即可。
+
 ---
 
+_（总纲阅读：[《Sing-box 高效配置与出站路由全解析》](/posts/sing-box-full-configuration-combat-2026/)，五大模块逐个拆解。）_
 _（相关资源导航：如果您需要购买适合部署软路由节点的海外 VPS，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线推荐见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_

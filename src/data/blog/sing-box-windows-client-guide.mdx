@@ -1,0 +1,86 @@
+---
+title: "sing-box-windows 实战：1.14 内核 + TUN DNS 接管模式全解析（2026版）"
+author: "毛佳国"
+pubDatetime: 2026-10-14T14:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Sing-box
+  - 客户端
+description: "sing-box-windows 是 Windows 上功能最完整的 Sing-box 图形客户端之一，已升级 1.14 内核。本文讲安装订阅、TUN DNS 接管模式三档切换、规则预热等新特性。"
+---
+
+sing-box-windows（GitHub 开源项目）是 Windows 平台 sing-box 图形客户端里功能最激进的一个：1.14 内核、TUN DNS 接管可调、Web Dashboard，适合爱折腾的极客。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **安装**：GitHub Releases 下安装包，架构会自动识别（ARM 设备不会下错）。
+> - **1.14 新特性**：TUN DNS 接管模式三档（hijack/native/disabled）、规则集本地缓存预热、Tailscale endpoint 实验支持。
+> - **订阅**：支持 vless/vmess/trojan/Hysteria2 订阅字段透传，订阅切换后节点列表自动刷新。
+
+---
+
+## 📥 1. 安装与订阅导入
+
+1. 去 [Releases 页](https://github.com/xinggaoya/sing-box-windows/releases)下载最新版安装。
+2. 订阅管理页粘贴订阅链接，支持自动识别协议类型。
+3. 测速（URLTest）后选节点，打开系统代理或 TUN。
+
+ARM 版 Windows（如骁龙本）注意：新版已修复架构误判，会自动下载 arm64 原生内核。
+
+---
+
+## 🌐 2. TUN DNS 接管模式：三档怎么选
+
+这是 1.14 带来的最实用开关（设置页可调）：
+
+| 模式 | 行为 | 适合 |
+|---|---|---|
+| `hijack`（默认） | 接管系统 DNS，走 sing-box 分流 | 大部分人，防泄漏最彻底 |
+| `native` | 不接管，用系统 DNS | DNS 有特殊需求（如公司内网 DNS） |
+| `disabled` | 完全关闭 TUN 的 DNS 处理 | 排查 DNS 问题时临时用 |
+
+**什么时候切 native**：开了 hijack 后公司内网域名解析异常、或某些网银 App 校验 DNS 时，切 native 让系统 DNS 接管，代理只管流量。
+
+升级 1.14 后首次启动会弹窗告知这个变化，别慌，是新功能不是 bug。
+
+---
+
+## ⚡ 3. 规则集本地缓存预热
+
+1.14 新增：后台自动下载规则集到本地数据目录，**离线冷启动不再被首次下载卡住**。以前的痛点是——断网重启客户端，规则集下不下来，整个分流瘫痪；现在有本地副本兜底。
+
+不用你操作，自动生效。在"规则管理"（RulesView）里能看到缓存状态。
+
+---
+
+## 🧪 4. 实验性功能：Tailscale endpoint 与 Web Dashboard
+
+- **Tailscale endpoint**：实验性支持把 Tailscale 当出站，异地组网用户可以试试（生产环境先观望）。
+- **Web Dashboard**：浏览器打开本地面板看实时流量、规则命中，比看日志直观。
+- **gRPC API**：给进阶用户做自动化（如脚本切换节点）。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 升级后提示"内核版本不兼容"？
+
+**答**：应用基于 1.14+ 的 gRPC API，如果手动切回旧版内核会出现兼容问题。设置页切换内核版本时会弹窗确认，生产环境别乱切。
+
+### Q2: Hysteria2 订阅导入后节点信息丢失？
+
+**答**：这是 v2.3.2 之前版本的 bug，已修复。升级到最新版重拉订阅即可。
+
+### Q3: 和 GUI.for.SingBox 怎么选？
+
+**答**：sing-box-windows 功能更激进（Dashboard、gRPC、Tailscale），适合极客；GFS 更稳、教程更多，适合小白。见本专题 [《GUI.for.SingBox 教程》](/posts/gui-for-singbox-tutorial/)。
+
+---
+
+_📚 **桌面 GUI 客户端专题**：① [《GUI.for.SingBox 教程》](/posts/gui-for-singbox-tutorial/) → ② 本篇（sing-box-windows） → ③ [《桌面端进阶：多订阅与翻车合集》](/posts/desktop-clients-advanced-tips/)_
+
+_（1.14 通用迁移见 [《1.14 升级避坑指南》](/posts/sing-box-114-migration-guide/)。）_
+
+_> 本文新特性基于项目 Release Notes（2026-09 核实），界面细节以实际版本为准，未经逐项实测。_

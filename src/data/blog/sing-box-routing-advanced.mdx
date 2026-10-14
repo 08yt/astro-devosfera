@@ -1,6 +1,6 @@
 ---
 title: "Sing-box 路由规则配置进阶：分流、屏蔽与按需代理实战"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-03-08T15:55:00.000+08:00
 featured: true
 draft: false
@@ -63,20 +63,19 @@ description: "掌握如何让国内网站直连、国外网站走代理，甚至
 
 ## 🛠️ 2. 屏蔽广告与黑名单域名
 
-创建一个 `block` 出站，并在 `rules` 顶部优先进行拦截：
+1.11 起不再需要创建 `block` 出站，直接在 `rules` 顶部用 `action: "reject"` 拦截：
 
 ```json
 {
   "outbounds": [
     { "type": "selector", "tag": "proxy", "outbounds": ["node-us", "node-hk"] },
-    { "type": "direct", "tag": "direct" },
-    { "type": "block", "tag": "block" }
+    { "type": "direct", "tag": "direct" }
   ],
   "route": {
     "rules": [
       {
-        "domain_suffix": ["baidu-ads.com", "adservice.google.com"],
-        "outbound": "block"
+        "domain_suffix": [".baidu-ads.com", ".adservice.google.com"],
+        "action": "reject"
       },
       {
         "rule_set": ["geosite-cn", "geoip-cn"],
@@ -87,6 +86,8 @@ description: "掌握如何让国内网站直连、国外网站走代理，甚至
   }
 }
 ```
+
+> 注意两处 1.x 变更：① `block` 出站已废弃，改用 `action: "reject"`；② `domain_suffix` 建议加 `.` 前缀（1.9 起行为明确：带点前缀只匹配子域名）。
 
 ---
 
@@ -133,4 +134,5 @@ description: "掌握如何让国内网站直连、国外网站走代理，甚至
 
 ---
 
+_（总纲阅读：[《Sing-box 高效配置与出站路由全解析》](/posts/sing-box-full-configuration-combat-2026/)，五大模块逐个拆解。）_
 _（相关资源导航：如果您需要购买适合分流部署的高质量 VPS 节点，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线机场评测见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_

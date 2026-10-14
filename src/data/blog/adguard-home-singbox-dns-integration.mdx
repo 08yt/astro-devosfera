@@ -1,12 +1,12 @@
 ---
 title: "双剑合璧：2026 极致内网 DNS 架构 —— AdGuard Home 与 Sing-box 完美防环流配合指南"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-07-26T10:00:00.000+08:00
 featured: true
 draft: false
 tags:
   - Homelab
-  - DNS安全
+  - DNS
 description: "理顺家庭 Homelab 与软路由网络中 AdGuard Home 与 Sing-box 的接力解析架构。手把手教学配置端口与路由分流，彻底根治 DNS 环流（Loop）死循环顽疾。"
 ---
 
@@ -60,12 +60,14 @@ description: "理顺家庭 Homelab 与软路由网络中 AdGuard Home 与 Sing-b
     "servers": [
       {
         "tag": "dns-direct",
-        "address": "223.5.5.5",
+        "type": "udp",
+        "server": "223.5.5.5",
         "detour": "direct"
       },
       {
         "tag": "dns-proxy",
-        "address": "https://1.1.1.1/dns-query",
+        "type": "https",
+        "server": "1.1.1.1",
         "detour": "proxy"
       }
     ],

@@ -103,6 +103,13 @@ const isActive = (path: string) => {
           </li>
           <li>
             <a
+              href="/download/"
+              class:list={["nav-link", { "nav-active": isActive("/download/") }]}
+              >下载</a
+            >
+          </li>
+          <li>
+            <a
               href="/tags/"
               class:list={["nav-link", { "nav-active": currentPath === "/tags" }]}
               >更多</a
@@ -229,9 +236,17 @@ const isActive = (path: string) => {
               <span>规则进阶</span>
             </a>
             <a
+              href="/download/"
+              class:list={["mobile-nav-link", { active: isActive("/download/") }]}
+              style="--i:4"
+            >
+              <span class="mobile-nav-indicator"></span>
+              <span>客户端下载</span>
+            </a>
+            <a
               href="/tags/"
               class:list={["mobile-nav-link", { active: currentPath === "/tags" }]}
-              style="--i:4"
+              style="--i:5"
             >
               <span class="mobile-nav-indicator"></span>
               <span>更多标签</span>

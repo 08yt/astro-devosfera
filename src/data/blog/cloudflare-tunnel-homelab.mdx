@@ -1,15 +1,16 @@
 ---
 title: "没有公网 IP 怎么外网访问？Cloudflare Tunnel 内网穿透终极指南"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-03-09T14:40:00.000+08:00
+modDatetime: 2026-10-12T23:00:00.000+08:00
 featured: true
 draft: false
 tags:
   - 网络技术
   - 内网穿透
   - Cloudflare
-  - HomeLab
-description: "家里装了 NAS 或软路由但没有公网 IPv4？无需 FRP 与路由器端口映射，利用 Cloudflare Tunnel 实现免公网 IP、免证书维护的内网穿透。"
+  - Homelab
+description: "家里装了 NAS 或软路由但没有公网 IPv4？无需 FRP 与路由器端口映射，利用 Cloudflare Tunnel 实现免公网 IP、免证书维护的内网穿透，附 Zero Trust 加固方案。"
 ---
 
 很多刚入坑 **HomeLab**（家庭实验室）的朋友，在内网跑起了 PVE、Docker 服务（博客、NAS、Alist 网盘），但一出门想要用手机在外网访问时瞬间傻眼 —— 运营商死活不给公网 IPv4！
@@ -21,15 +22,18 @@ description: "家里装了 NAS 或软路由但没有公网 IPv4？无需 FRP 与
 > [!NOTE]
 > **📌 核心速览（TL;DR / 快问快答）：**
 >
-> - **免公网 IP & 免端口映射**：在内网机器运行 `cloudflared` 容器，主动与 Cloudflare 边缘节点建立双向加密加密隧道。
-> - **全自动 HTTPS 证书**：由 Cloudflare 边缘端直接提供 SSL 证书并防御 DDoS 攻击，关闭公网一切入站端口。
-> - **Zero Trust 安全保护**：配合 Cloudflare Access，可为任意内网后台强制添加邮箱 OTP 验证码防护。
+> - **底层原理**：本地 `cloudflared` 守护进程主动向 Cloudflare 全球边缘集群建立加密长连接；外部访问域名时，CF 将流量经由该隧道安全转发给内网服务 —— 全程无需公网 IP、无需路由器端口映射。
+> - **零端口暴露**：路由器和光猫无需开启任何端口转发（Port Forwarding），天然免疫全网端口扫描与 DDoS 攻击。
+> - **全自动 HTTPS**：由 Cloudflare 边缘端直接提供 SSL 证书，全链路强制 HTTPS 加密。
+> - **Zero Trust 加固**：配合 Cloudflare Access，可为任意内网后台强制添加邮箱 OTP 验证码防护。
 
 ---
 
-## 🛠️ 1. 在 Docker 中运行 `cloudflared` 容器
+## 🛠️ 一、部署 `cloudflared`：两种方式二选一
 
-在 Cloudflare Zero Trust 后台创建隧道并复制 Token，随后在内网主机部署：
+先在 [Cloudflare One 控制台](https://one.dash.cloudflare.com/) 的 **Networks -> Tunnels** 创建隧道并复制 Token。
+
+### 方式 A：Docker 一行命令（最快）
 
 ```bash
 docker run -d \
@@ -39,18 +43,40 @@ docker run -d \
   tunnel --no-autoupdate run --token YOUR_CLOUDFLARE_TUNNEL_TOKEN
 ```
 
+### 方式 B：Docker Compose（推荐长期运行）
+
+在内网主机（NAS / 软路由 / Linux）创建 `compose.yaml`：
+
+```yaml
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared_tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token YOUR_CLOUDFLARE_TUNNEL_TOKEN
+```
+
+启动：`docker compose up -d`。
+
 ---
 
-## 🌐 2. 配置 Public Hostname 域名映射
+## 🌐 二、配置 Public Hostname 域名映射
 
-在 Cloudflare Zero Trust -> **Networks** -> **Tunnels** -> 点击对应隧道进入 **Public Hostname**：
+1. 回到 Cloudflare One 控制台，进入 **Networks -> Tunnels**，点击刚连上线的隧道；
+2. 进入 **Public Hostname**（或 Configure -> Public Hostname），添加路由：
+   - **Subdomain**：`nas`（即 `nas.yourdomain.com`）
+   - **Domain**：选择你在 CF 托管的域名
+   - **Type**：`HTTP`
+   - **URL**：内网服务的真实地址，如 `http://192.168.1.100:5000`
+3. 保存后，外网直接访问 `https://nas.yourdomain.com` 即可秒级穿透直达！
 
-- **Subdomain**：`nas`
-- **Domain**：选择你在 CF 托管的域名
-- **Service Type**：`HTTP`
-- **URL**：输入局域网内网 IP 与端口 `192.168.1.100:8080`
+---
 
-访问 `https://nas.yourdomain.com` 即可秒开内网后台！
+## 🔐 三、进阶加固：Cloudflare Access 零信任门禁
+
+内网后台（PVE、NAS 管理页）一旦暴露在公网域名下，建议再加一道门：
+
+在 Zero Trust 控制台为该域名创建 **Access Policy**，要求访问者先通过邮箱 OTP 验证。配置细节见 [《使用 Cloudflare Access 配置零信任内网穿透与 SSO 验证》](/posts/cloudflare-zero-trust-access-guide/)。
 
 ---
 
@@ -58,12 +84,16 @@ docker run -d \
 
 ### Q1: 大陆网络访问 Cloudflare Tunnel 绑定的域名会慢吗？
 
-**答**：由于 Cloudflare 节点在中国大陆走普通骨干网出境，晚高峰可能会有一定延迟。若追求极致低延迟，可使用海外 **DMIT** 或 **搬瓦工** 等拥有 **中国电信 CN2 GIA** 或 **联通 AS9929** 回程线路的 VPS 自建 FRP 隧道作为补充。
+**答**：Cloudflare 节点在中国大陆走普通骨干网出境，晚高峰可能有一定延迟。若追求极致低延迟，可用海外 **DMIT** 或 **搬瓦工** 等拥有 **中国电信 CN2 GIA** / **联通 AS9929** 回程线路的 VPS 自建 FRP 隧道作为补充。
 
-### Q2: 使用 Cloudflare Tunnel 传输大文件或视频流会被封账号吗？
+### Q2: 用 Tunnel 传输大文件或跑 Jellyfin 视频流会被封号吗？
 
-**答**：Cloudflare 服务条款对大文件纯存储传输有一定限制。建议用于 Homelab 管理面板与网页服务穿透；大容量媒体传输建议结合 Sing-box 智能分流。
+**答**：Cloudflare ToS 对纯非 HTML 大流量（如 TB 级影视串流）有限制。建议：Web 管理面板、Git、密码库走 Tunnel；Jellyfin/Emby 等媒体流改用公网 IPv6 + DDNS 直连（见 [《全面拥抱公网 IPv6 + DDNS》](/posts/why-embrace-ipv6-ddns/)）。
+
+### Q3: 和传统 FRP 相比，Tunnel 的最大优势是什么？
+
+**答**：三点：① 不需要一台有公网 IP 的中转 VPS；② 零端口暴露，安全模型完全不同；③ HTTPS 证书与 DDoS 防护全由 Cloudflare 边缘承担，免运维。
 
 ---
 
-_（相关资源导航：如果您需要购买独立 VPS 部署低延迟中转穿透，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线推荐见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_
+_（相关阅读：[《Tailscale 异地组网实战指南》](/posts/tailscale-mesh-network-guide/) · [《巧用 SSH 端口转发三大黑魔法》](/posts/ssh-port-forwarding-tricks/) · 需要独立 VPS 做中转可看 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)！）_

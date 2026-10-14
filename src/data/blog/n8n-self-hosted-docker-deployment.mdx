@@ -1,12 +1,12 @@
 ---
 title: "从零搭建你的私人 AI 工作室：n8n 自托管完全部署指南（Docker + PostgreSQL + HTTPS）"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-10-05T08:00:00.000+08:00
 featured: false
 draft: false
 tags:
-  - n8n
-  - AI自动化
+  - 工作流
+  - AI
   - Docker
   - Homelab
   - 运维自动化
@@ -367,7 +367,7 @@ A：三步走：① 在新服务器按本文重新部署 n8n，使用**相同的
 
 **Q：n8n 的 Webhook 在国内服务器接收不到 GitHub/Telegram 的请求怎么办？**
 
-A：这是网络连通性问题，不是 n8n 的问题。解决方案：① 将 n8n 部署在境外 VPS（推荐）；② 在国内 VPS 部署 n8n，通过 Cloudflare Tunnel 暴露 Webhook 端点（参考本站文章 [《Cloudflare Tunnel 内网穿透》](/posts/cloudflare-tunnel-intro/)）。
+A：这是网络连通性问题，不是 n8n 的问题。解决方案：① 将 n8n 部署在境外 VPS（推荐）；② 在国内 VPS 部署 n8n，通过 Cloudflare Tunnel 暴露 Webhook 端点（参考本站文章 [《Cloudflare Tunnel 内网穿透》](/posts/cloudflare-tunnel-homelab/)）。
 
 **Q：n8n 支持多用户吗？能给团队用吗？**
 

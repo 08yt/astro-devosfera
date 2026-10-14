@@ -1,13 +1,13 @@
 ---
 title: "拒绝 IPv6 泄露：配置 Sing-box 的 IPv4/IPv6 双栈网络路由与底层防漏策略"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-03-09T13:10:00.000+08:00
 featured: false
 draft: false
 tags:
   - 拓展教程
-  - IPv6
-  - 安全防护
+  - 新协议
+  - 网络安全
 description: "本地宽带开启 IPv6 后频繁暴露真实 IP 或导致 ChatGPT/Netflix 封号？手把手教你配置 Sing-box 的 DNS 屏蔽与服务端 prefer_ipv6 极速分流。"
 ---
 
@@ -21,8 +21,8 @@ description: "本地宽带开启 IPv6 后频繁暴露真实 IP 或导致 ChatGPT
 > **📌 核心速览（TL;DR / 快问快答）：**
 >
 > - **安全一刀切（最推荐）**：在客户端 `dns.servers` 中强制声明 `"strategy": "ipv4_only"`，彻底抹杀 AAAA 记录，从源头杜绝 v6 泄露。
-> - **远端借力（极客模式）**：本地仅走 IPv4 代理隧道，在海外 VPS 服务端 `outbounds.direct` 配置 `"domain_strategy": "prefer_ipv6"`，利用 VPS 原生 IPv6 绕过晚高峰流媒体限速。
-> - **真双栈透明代理**：在 TUN 模块配置 `"inet6_address": "fdfe:dcba:9876::1/126"` 与 `strict_route: true` 全量接管。
+> - **远端借力（极客模式）**：本地仅走 IPv4 代理隧道，在海外 VPS 服务端 `outbounds.direct` 配置 `domain_resolver`（`strategy: prefer_ipv6`），利用 VPS 原生 IPv6 绕过晚高峰流媒体限速。
+> - **真双栈透明代理**：在 TUN 模块配置 `"address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"]` 与 `strict_route: true` 全量接管。
 
 ---
 
@@ -36,13 +36,15 @@ description: "本地宽带开启 IPv6 后频繁暴露真实 IP 或导致 ChatGPT
     "servers": [
       {
         "tag": "dns-proxy",
-        "address": "https://1.1.1.1/dns-query",
+        "type": "https",
+        "server": "1.1.1.1",
         "detour": "proxy",
         "strategy": "ipv4_only"
       },
       {
         "tag": "dns-direct",
-        "address": "223.5.5.5",
+        "type": "udp",
+        "server": "223.5.5.5",
         "detour": "direct",
         "strategy": "ipv4_only"
       }
@@ -50,7 +52,7 @@ description: "本地宽带开启 IPv6 后频繁暴露真实 IP 或导致 ChatGPT
     "rules": [
       {
         "query_type": ["AAAA"],
-        "server": "block"
+        "action": "reject"
       }
     ],
     "final": "dns-proxy",
@@ -71,11 +73,21 @@ description: "本地宽带开启 IPv6 后频繁暴露真实 IP 或导致 ChatGPT
     {
       "type": "direct",
       "tag": "direct",
-      "domain_strategy": "prefer_ipv6"
+      "domain_resolver": {
+        "server": "dns-vps",
+        "strategy": "prefer_ipv6"
+      }
     }
-  ]
+  ],
+  "dns": {
+    "servers": [
+      { "tag": "dns-vps", "type": "udp", "server": "8.8.8.8" }
+    ]
+  }
 }
 ```
+
+> 1.12 起 `domain_strategy` 已废弃，改用 `domain_resolver` 指定解析用的 DNS 服务器 + 策略。
 
 ---
 
@@ -91,4 +103,5 @@ description: "本地宽带开启 IPv6 后频繁暴露真实 IP 或导致 ChatGPT
 
 ---
 
+_（总纲阅读：[《Sing-box 高效配置与出站路由全解析》](/posts/sing-box-full-configuration-combat-2026/)，五大模块逐个拆解。）_
 _（相关资源导航：如果您需要购买部署双栈节点的独立 VPS，欢迎阅读 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/) 获取 DMIT、搬瓦工与 CloudCone 优惠；商用专线推荐见 [《“饿饭CC云”深度评测》](/posts/efan-cc-cloud-review/)！）_

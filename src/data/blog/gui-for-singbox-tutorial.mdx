@@ -1,0 +1,99 @@
+---
+title: "GUI.for.SingBox 保姆级教程：订阅导入、TUN 模式与分流规则一次搞定（2026版）"
+author: "毛佳国"
+pubDatetime: 2026-10-14T10:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Sing-box
+  - 客户端
+description: "GUI.for.SingBox 是 2026 年最火的 Sing-box 桌面图形客户端。本文手把手教你下载安装、导入机场订阅、开启 TUN 模式、配置规则集分流与自动更新。"
+---
+
+GUI.for.SingBox（简称 GFS）是目前社区最火的 Sing-box 桌面图形客户端：Sing-box 原生内核、内存占用低、订阅导入方便，小白也能 5 分钟上手。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **下载**：GitHub Releases 找对应系统版本（Windows/macOS/Linux）。
+> - **导入**：订阅链接粘贴即用；Clash 订阅先转 sing-box 格式（见下文）。
+> - **上网**：选节点 → 开系统代理或 TUN → 浏览器能开网页即成功。
+> - **分流**：远程规则集（SRS）+ 路由规则，一次配置长期有效。
+
+---
+
+## 📥 1. 下载安装
+
+1. 打开 [GUI.for.SingBox 的 GitHub Releases](https://github.com/GUI-for-SingBox/GUI.for.SingBox/releases)（认准官方仓库，防钓鱼）。
+2. 按系统下载：Windows 选 `.exe` 安装包，macOS 选 `.dmg`，Linux 选 AppImage/`.deb`。
+3. 安装后首次启动，允许防火墙/系统扩展权限（TUN 需要）。
+
+> 版本选择：跟着最新稳定版走，内核版本在设置页可查；1.14+ 用户注意配置写法变化（见 [《1.14 升级避坑指南》](/posts/sing-box-114-migration-guide/)）。
+
+---
+
+## 🔗 2. 导入订阅：两种情况
+
+### 情况 A：机场给的是 sing-box 订阅
+
+直接在"订阅"页粘贴 URL，点更新，节点列表就出来了。设好自动更新间隔（如 12 小时），节点过期自动刷新。
+
+### 情况 B：机场给的是 Clash 订阅
+
+GFS 原生不吃 Clash YAML，先转换：
+
+1. 看 [《订阅转换总纲》](/posts/convert-clash-to-singbox/) 选个顺手的工具转出 sing-box 订阅链接；
+2. 或用 [《GitHub Actions 自动转换》](/posts/github-actions-singbox-sub-converter/) 搭私有流水线，一劳永逸。
+
+---
+
+## 🚀 3. 连接上网：两步
+
+1. **选节点**：在节点列表点测速（URLTest），选延迟低的；或开"自动选择"让它定时测。
+2. **开代理**：
+   - **系统代理模式**：只接管浏览器等走系统代理的软件，轻量、省电；
+   - **TUN 模式**：虚拟网卡接管全系统，终端、游戏、桌面 App 全走，推荐主力使用。
+
+状态栏图标变色即连接成功，打开浏览器验证。
+
+---
+
+## 🚦 4. 分流规则：远程规则集
+
+GFS 支持远程 SRS 规则集，推荐配置：
+
+- `geosite-cn` + `geoip-cn` → 直连（国内走直连）
+- `geosite-ads` → 拦截
+- 其余 → 代理（final）
+
+规则在"路由"页可视化编辑，不用手写 JSON。想理解原理看 [《配置总纲》](/posts/sing-box-full-configuration-combat-2026/)；想按 App 分流看 [《TUN 进阶规则》](/posts/sing-box-client-tun-advanced-rules/)。
+
+---
+
+## 🔄 5. 插件与自动更新
+
+- **内核更新**：设置页可切换 sing-box 内核版本，升级前先备份配置；
+- **订阅自动更新**：按间隔自动拉取，适合机场经常换节点的用户；
+- **多订阅**：可添加多个订阅源，节点分组管理，出差/家用分开。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 导入订阅后节点全灰（不可用）？
+
+**答**：① 订阅链接过期，去机场后台复制新的；② Clash 订阅没转换，GFS 解析不了；③ 协议太新（如 TUIC v5），升级 GFS 到最新版。
+
+### Q2: TUN 模式下微信/QQ 连不上？
+
+**答**：进程分流里把国产 App 设直连，或检查 `geosite-cn` 规则是否生效。详见 [《TUN 模式 WSL2/Docker 优化》](/posts/singbox-tun-mode-wsl2-docker-optimization/) 的豁免思路。
+
+### Q3: 和 Clash Verge Rev 二选一？
+
+**答**：Clash 老用户、重度依赖 Mihomo 生态选 Verge Rev；要原生 sing-box 内核、追新协议选 GFS。对比见 [《选型总纲》](/posts/sing-box-vs-clash-meta/)。
+
+---
+
+_📚 **桌面 GUI 客户端专题**：① 本篇（GUI.for.SingBox） → ② [《sing-box-windows 实战》](/posts/sing-box-windows-client-guide/) → ③ [《桌面端进阶：多订阅与翻车合集》](/posts/desktop-clients-advanced-tips/)_
+
+_> 本文基于公开文档与社区教程整理，界面细节以实际版本为准，未经逐项实测。_

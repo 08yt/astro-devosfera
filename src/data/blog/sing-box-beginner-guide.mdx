@@ -1,14 +1,15 @@
 ---
 title: "2026年最新 Sing-box 全平台小白完美入门指南"
-author: "毛佳国"
+author: "易邦"
 pubDatetime: 2026-03-08T15:45:00.000+08:00
+modDatetime: 2026-10-12T23:00:00.000+08:00
 featured: true
 draft: false
 tags:
   - 基础入门
   - Sing-box
   - 客户端
-description: "从零开始认识 Sing-box 是什么、它的优势在哪。本教程手把手教你在 Windows、Mac、iOS、Android 端下载客户端并导入节点订阅，三分钟跑通科学上网环境。"
+description: "从零开始认识 Sing-box 是什么、它的优势在哪。本教程手把手教你在 Windows、Mac、iOS、Android 端下载客户端并导入节点订阅，三分钟跑通科学上网环境，并给出完整进阶路线图。"
 ---
 
 import YouTube from "../../components/YouTube.astro";
@@ -18,59 +19,134 @@ import YouTube from "../../components/YouTube.astro";
 > [!NOTE]
 > **📌 核心速览（TL;DR / 快问快答）：**
 >
-> - **Sing-box 定位**：2026 年最强“通用代理内核”，原生支持 VLESS-Reality、Hysteria 2、TUIC V5、Shadowsocks 等全协议，极致省电且资源占用低。
+> - **Sing-box 定位**：2026 年最强"通用代理内核"，原生支持 VLESS-Reality、Hysteria 2、TUIC V5、Shadowsocks 等全协议，极致省电且资源占用低。
+> - **先搞懂概念**：Sing-box 是"发动机"，客户端是"汽车外壳" —— 新手只需要选好客户端、导入订阅，不需要手搓 JSON。
 > - **客户端推荐**：桌面端推荐 **Mihomo Party** 与 **Sing-box GUI**；移动端 iOS 推荐 **Shadowrocket / SFI**，Android 推荐 **Hiddify Next / SFA**。
 > - **配置核心**：通过导入远程订阅链接一键转换，结合 TUN 虚拟网卡接管全系统流量。
+> - **学完下一步**：本文是总纲，文末有完整进阶路线图（DNS 防泄漏 → 路由分流 → 自建节点）。
 
 <YouTube id="BAfbkLizFGc" title="Sing-box 新手核心入门实操" />
 
 ---
 
-## 🚀 为什么 2026 年大家都在转向 Sing-box？
+## 🧭 一、先搞懂：Sing-box、客户端、订阅是什么关系？
 
-Sing-box 被社区称为“下一代通用代理平台”，它不仅有着难以置信的跨平台一致性，还在资源占用方面做到了极致。作为“瑞士军刀”级别的全家桶内核，它的主要优势包括：
+新手最大的困惑就是名词太多。一句话讲清：
+
+| 名词 | 比喻 | 你需要做什么 |
+| :--- | :--- | :--- |
+| **Sing-box（内核）** | 汽车发动机 | 不用管，客户端自带 |
+| **客户端（GUI）** | 汽车外壳+方向盘 | 选一款装好，如 Mihomo Party |
+| **订阅链接** | 加油卡 | 从机场/自建节点获取，粘贴导入 |
+| **TUN 模式** | 自动挡 | 打开后全系统流量自动走代理 |
+| **规则集（.srs）** | 导航地图 | 客户端自动更新，决定国内外分流 |
+
+**结论：小白入门 = 选客户端 + 粘贴订阅 + 打开 TUN，三步走完。** 手搓 JSON 是极客进阶玩法，不是入门门槛。
+
+---
+
+## 🚀 二、为什么 2026 年大家都在转向 Sing-box？
+
+Sing-box 被社区称为"下一代通用代理平台"，它不仅有着难以置信的跨平台一致性，还在资源占用方面做到了极致。作为"瑞士军刀"级别的全家桶内核，它的主要优势包括：
 
 1. **极致轻量与高吞吐**：基于 Go 语言极致优化，常驻内存占用低至 15~30MB，能够轻松跑满千兆乃至万兆宽带。
 2. **前沿协议原生支持**：原生支持 VLESS-Reality、Trojan、Hysteria 2、TUIC V5 等顶级抗封锁协议，无需额外安装复杂的插件。
 3. **高性能 Rule Set 分流**：弃用旧版臃肿的 `.dat` 文本库，全面采用毫秒级启动的 `.srs` 二进制规则集，实现国内外流量无缝切替、防止 DNS 泄漏与广告过滤。
 
+和 Clash、V2Ray 的详细对比见 [《2026 桌面端代理选型终极指南：Sing-box vs Mihomo 内核对决》](/posts/sing-box-vs-clash-meta/) 与 [《为什么大家都开始用 Sing-box？与 Clash、V2Ray 核心原理对比》](/posts/why-singbox-vs-clash-v2ray/)。
+
+| 维度 | Sing-box | Mihomo (Clash Meta) | Xray-core |
+| :--- | :--- | :--- | :--- |
+| 配置格式 | JSON（机器友好） | YAML（人工友好） | JSON |
+| 常驻内存 | 🏆 15-30MB | 40-60MB | 30-50MB |
+| 规则集 | 🏆 二进制 .srs | 文本/MRS | 文本 |
+| 新协议跟进 | 🏆 最快 | 快 | 快 |
+| 上手难度 | 中（需 GUI 辅助） | 低 | 高 |
+
 ---
 
-## 💻 2026 各平台跨平台客户端选型指南
+## 🪤 二之一、新手最常见的 5 大误区
 
-Sing-box 本身是一个底层的内核程序，但社区涌现出了许多界面极其优雅的图形化（GUI）客户端：
+1. **"Sing-box 就是个 App"** —— 错。它是内核，你每天打开的是客户端。内核崩了重装客户端没用，得看日志。
+2. **"节点越多越好"** —— 错。100 个慢节点不如 3 个 CN2 GIA 精品节点，测速分组比堆数量重要。
+3. **"全局模式最省心"** —— 错。全局模式下国内 App（微信/支付宝）可能触发风控，规则模式+分应用代理才是正解。
+4. **"TUN 打开就万事大吉"** —— 错。TUN 和 DNS 泄露是两回事，开了 TUN 也要去 dnsleaktest 验证。
+5. **"免费订阅真香"** —— 免费节点 IP 被万人骑，流媒体解锁基本全灭，还可能记录你的流量。入门体验可以，正经用还是付费。
+
+---
+
+## 📦 三、上手前准备：订阅从哪里来？
+
+两条路，按需选择：
+
+- **路线 A（推荐新手）：买机场订阅** —— 花钱省时间，服务商提供现成 Sing-box 订阅链接，粘贴即用。注意选原生支持 Sing-box 订阅的服务商，免去转换麻烦。评测参考 [《"饿饭CC云"深度评测》](/posts/efan-cc-cloud-review/)。
+- **路线 B（极客）：自建 VPS 节点** —— 买一台海外 VPS，自己部署 Sing-box 服务端，IP 干净独享。教程见 [《VPS 主机从零部署 Sing-box 节点服务端实战》](/posts/vps-singbox-vless-reality/)，选购避坑见 [《2026 国外 VPS 选购指南》](/posts/vps-buying-guide-2026/)。
+
+> ⚠️ **避坑提醒**：机场只给了 Clash（YAML）订阅？没关系，[《将 Clash 订阅链接一键转换为 Sing-box 格式的 3 种方法》](/posts/convert-clash-to-singbox/)教你无痛转换。
+
+---
+
+## 💻 四、2026 各平台客户端选型指南
+
+Sing-box 本身是底层内核程序，日常使用的是社区开发的图形化（GUI）客户端：
 
 ### 1. Windows 平台
 
-- **Sing-box GUI / Desktop（官方推荐）**：使用 Flutter 打造的界面，干净优雅，支持 TUN 模式一键接管系统流量。详见 [《Windows / Mac 平台如何优雅地使用 Sing-box 客户端？》](/posts/sing-box-desktop-clients/)。
-- **Mihomo Party**：2026 年大火的全新桌面客户端，颜值极高，支持一键切换内置 Sing-box 与 Mihomo 内核。深度横评可参考 [《Mihomo Party 与 Sing-box GUI 强强对决：2026 跨平台桌面客户端选型》](/posts/mihomo-party-vs-sing-box-gui/)。
+- **Sing-box GUI / Desktop（官方推荐）**：界面干净优雅，支持 TUN 模式一键接管系统流量。详见 [《Windows / Mac 平台如何优雅地使用 Sing-box 客户端？》](/posts/sing-box-desktop-clients/)。
+- **Mihomo Party**：2026 年大火的全新桌面客户端，颜值极高，支持一键切换内置 Sing-box 与 Mihomo 内核。深度横评可参考 [《2026 桌面端代理选型终极指南》](/posts/sing-box-vs-clash-meta/)。
 
 ### 2. macOS 平台
 
-- **Sing-box for Mac (SFM)**：完美适配 macOS 苹果设计规范，支持深色模式与菜单栏快速切替，TUN 模式权限管理极佳。
+- **Sing-box for Mac (SFM)**：完美适配 macOS 设计规范，支持深色模式与菜单栏快速切替，TUN 模式权限管理极佳。
 
 ### 3. iOS / iPadOS 与 Apple TV (tvOS)
 
 - **Sing-box for iOS (SFI)**：官方客户端，需要非中国区 App Store 账号免费获取，支持 iCloud 多端同步。
 - **Apple TV 大屏分流**：tvOS 17/18 原生支持 SFI，免除软路由烦恼，详见 [《2026 最新 Apple TV 原生 Sing-box (SFI) 保姆级配置与流媒体分流实战》](/posts/apple-tv-singbox-tvos-setup-guide/)。
-- **Shadowrocket (小火箭) / Stash / Loon / Surge**：各大主流客户端横评选购与导入教程请参考 [《iOS 代理神器大比拼：2026 Shadowrocket、Loon、Surge 与 Stash 全方位选购》](/posts/singbox-ios-clients-comparison-shadowrocket-loon-surge-stash/)。
+- **Shadowrocket (小火箭) / Stash / Loon / Surge**：各大主流客户端横评选购与导入教程请参考 [《iOS 代理神器大比拼》](/posts/singbox-ios-clients-comparison-shadowrocket-loon-surge-stash/)。
 
-### 4. Android (安卓)
+### 4. Android（安卓）
 
-- **Sing-box for Android (SFA)**：官方客户端，完美支持 Android 系统级“分应用代理（Per-App Proxy）”，可单独放行微信、支付宝等国内应用，详见 [《iOS / Android 移动端 Sing-box 配置与分应用代理保姆级教程》](/posts/sing-box-mobile-clients/)。
-- **Hiddify Next**：跨平台全能神器，界面极其傻瓜化，适合纯小白用户一键导入体验，详见 [《2026 跨平台客户端 Hiddify Next 极简新手订阅与分流配置实操》](/posts/hiddify-next-singbox-client-guide/)。
+- **Sing-box for Android (SFA)**：官方客户端，完美支持 Android 系统级"分应用代理（Per-App Proxy）"，可单独放行微信、支付宝等国内应用，详见 [《iOS / Android 移动端 Sing-box 配置与分应用代理保姆级教程》](/posts/sing-box-mobile-clients/)。
+- **Hiddify Next**：跨平台全能神器，界面极其傻瓜化，适合纯小白一键导入体验，详见 [《2026 跨平台客户端 Hiddify Next 极简新手订阅与分流配置实操》](/posts/hiddify-next-singbox-client-guide/)。
+
+### 5. Linux / 软路由（进阶）
+
+- 桌面 Linux 可直接运行 Sing-box CLI 或第三方 GUI；OpenWrt 软路由原生部署见 [《OpenWrt 原生部署 Sing-box (Tproxy) 透明代理保姆级教程》](/posts/openwrt-singbox-tproxy/)。
 
 ---
 
-## ⚡ 如何导入订阅链接？（极简实操）
-
-对于绝大多数刚接触科学上网的新手来说，导入服务商（机场）提供的节点订阅是唯一关键的步骤：
+## ⚡ 五、导入订阅：极简四步实操
 
 1. **启动客户端**：打开你的 Sing-box 界面（如 Sing-box GUI 或 Hiddify）。
-2. **新建配置 (Profiles)**：点击 **"New Profile" (新建配置)**。
-3. **填入远程订阅 URL**：选择 **Remote（远程）** 模式，粘入服务商给出的 Sing-box 链接。
-   - _（如果您目前还没有稳定可靠的高速节点订阅，推荐阅读我们的深度评测：[《“饿饭CC云”怎么样？2026 最新饿饭CC云机场深度评测与 Sing-box 订阅配置指南》](/posts/efan-cc-cloud-review/)，获取极具性价比的高速 IPLC 专线节点。）_
-4. **开启 TUN 模式并启动**：勾选 **TUN 模式 (虚拟网卡)** 并点击连接，Sing-box 会接管全局流量，带你流畅畅游开放网络！
+2. **新建配置**：点击 **"New Profile"（新建配置）**。
+3. **填入远程订阅 URL**：选择 **Remote（远程）** 模式，粘贴服务商给出的 Sing-box 链接。
+4. **开启 TUN 模式并启动**：勾选 **TUN 模式（虚拟网卡）** 并点击连接，Sing-box 会接管全局流量！
+
+---
+
+## ✅ 六、连上之后必做的 5 件事
+
+别以为连上就完事了，这 5 项检查决定你的体验上限：
+
+1. **测速选节点**：用客户端的 URLTest / 自动测速选出延迟最低的节点，不要一直用默认的。
+2. **确认 TUN 生效**：访问 `ip.sb` 或 `whoer.net`，确认 IP 已变为节点所在地区。
+3. **检查 DNS 泄露**：去 `dnsleaktest.com` 跑 Extended Test，结果里不能出现国内运营商 IP。详细配置见 [《Sing-box 终极 DNS 配置方案》](/posts/sing-box-dns-leak-fakeip/)。
+4. **分应用代理（手机）**：微信、支付宝、银行 App 设为直连，避免风控。教程见 [《移动端分应用代理保姆级教程》](/posts/sing-box-mobile-clients/)。
+5. **更新规则集**：确认 `.srs` 规则集是最新版，避免用过期规则裸奔。
+
+---
+
+## 🗺️ 七、进阶路线图：入门之后学什么？
+
+按顺序刷完，你就是 Sing-box 高手：
+
+1. **搞懂配置文件** → [《Sing-box 配置文件 config.json 详解》](/posts/sing-box-config-json-guide/)
+2. **玩转路由分流** → [《Sing-box 高效配置与出站路由全解析》](/posts/sing-box-full-configuration-combat-2026/)
+3. **DNS 零泄露** → [《Sing-box 终极 DNS 配置方案》](/posts/sing-box-dns-leak-fakeip/)
+4. **规则集进阶** → [《Sing-box Rule Set 配置与自动更新全攻略》](/posts/sing-box-rule-set-ultimate-guide/)
+5. **自建节点** → [《VPS 从零部署 Sing-box 节点实战》](/posts/vps-singbox-vless-reality/)
+6. **从 Clash 迁移** → [《从 Clash Verge Rev 迁移至 Sing-box 保姆级教程》](/posts/clash-verge-to-singbox-migration/)
 
 ---
 
@@ -78,12 +154,63 @@ Sing-box 本身是一个底层的内核程序，但社区涌现出了许多界�
 
 ### Q1: 如果我的机场只提供 Clash 订阅，能直接在 Sing-box 中使用吗？
 
-**答**：可以使用站内转换工具或后端转换服务，将 Clash 的 `yaml` 订阅一键转为 Sing-box 的 `json` 格式，也可以使用 Mihomo Party 或 Hiddify 等支持自动转换的现代化客户端。
+**答**：可以使用 Mihomo Party 或 Hiddify 等支持自动转换的客户端直接导入；也可以用转换工具把 YAML 转成 JSON，见 [《3 种转换方法》](/posts/convert-clash-to-singbox/)。
 
 ### Q2: 开启 TUN 模式后，游戏或 Steam 连接失败怎么办？
 
-**答**：请确保 Sing-box 路由规则中将本地局域网段（`192.168.0.0/16`）及 UDP 53 DNS 解析设为 `direct` 放行，或者在客户端中开启 UDP 代理适配。
+**答**：请确保路由规则中将本地局域网段（`192.168.0.0/16`）及 UDP 53 设为 `direct` 放行；WSL2 / Docker 冲突排查见 [《Sing-box TUN 模式终极调优》](/posts/singbox-tun-mode-wsl2-docker-optimization/)。
+
+### Q3: Sing-box 和 Clash 我到底该用哪个？
+
+**答**：2026 年新手无脑选 Sing-box 生态（更轻、更快、协议更新）；Clash 老用户且重度依赖 YAML 手搓，可以留守 Mihomo。深度对比见 [《选型终极指南》](/posts/sing-box-vs-clash-meta/)。
+
+### Q4: 免费节点能用吗？
+
+**答**：能连，但免费节点的速度、安全和稳定性都没有保障，且常被多人共用导致 IP 被流媒体拉黑。长期使用建议机场订阅或自建。
+
+### Q5: iOS 上为什么搜不到 Sing-box？
+
+**答**：国区 App Store 下架了此类应用，需要注册非国区 Apple ID 下载 SFI，或直接用 Shadowrocket（同样需外区账号）。
+
+### Q6: 电脑和手机可以共用一个订阅吗？
+
+**答**：可以。绝大多数机场订阅不限设备数（或限制 3-5 台），同一个链接粘贴到手机和电脑客户端都能用。但注意同时在线设备数别超套餐限制。
+
+### Q7: Sing-box 需要一直开着吗？不科学上网时怎么办？
+
+**答**：不需要。日常把客户端设为"规则模式"而非"全局模式"，国内流量自动直连，几乎零感知；只有访问外网时流量才走代理。想彻底关闭，直接退出客户端即可。
 
 ---
 
-_（相关资源导航：如果您需要寻找 IP 段干净、网络质量极佳的高端海外直连 VPS 来部署自己的 Sing-box 节点，欢迎访问我们的 [《YGJC•BEST 极客精选资源导航》](/best/)，快速获取 DMIT、搬瓦工及 CloudCone 的最新优惠通道！）_
+## 📖 附：新手术语表（收藏级）
+
+| 术语 | 一句话解释 |
+| :--- | :--- |
+| 机场 | 出售代理订阅的服务商（非真的机场） |
+| 专线 / IPLC | 商业内网专线，速度最快最稳，也最贵 |
+| CN2 GIA / AS9929 | 电信/联通的高质量回程线路，晚高峰不卡 |
+| 订阅 | 服务商给你的一串 URL，里面是所有节点信息 |
+| 面板 | 机场的用户后台，用来续费、看流量、复制订阅 |
+| TUN | 虚拟网卡模式，接管全系统流量，比系统代理更彻底 |
+| 系统代理 | 只接管浏览器等走系统代理设置的流量，游戏/终端可能漏网 |
+| 分流 / 规则 | 决定"哪些走代理、哪些直连"的一套规则 |
+| 规则集（.srs） | 二进制规则文件，Sing-box 的分流依据，启动极快 |
+| DNS 泄露 | 域名查询没走代理，被本地运营商看到，最常见的翻车点 |
+| FakeIP | 给国外域名分配假 IP 实现秒连的技术，手机端首选 |
+| 落地 / 解锁 | 节点 IP 能不能看 Netflix、Disney+ 等流媒体 |
+| 测速 / URLTest | 自动测试所有节点延迟，选出最快的一个 |
+| 策略组 | 一组节点+一个选择策略（自动测速/手动选择/故障转移） |
+| 订阅转换 | 把 Clash 的 YAML 订阅转成 Sing-box 的 JSON |
+| 混淆 / 指纹 | 让代理流量看起来像正常 HTTPS 流量的技术（uTLS、Reality） |
+| 被墙 | IP/域名被防火墙封锁，连不上 |
+| 回程 / 去程 | 数据从你到服务器（去程）、从服务器回来（回程）的线路质量 |
+
+---
+
+_（相关资源导航：高速节点评测见 [《"饿饭CC云"深度评测》](/posts/efan-cc-cloud-review/)；自建 VPS 优惠见 [《YGJC•BEST 极客精选资源导航》](/best/)！）_
+
+---
+
+## 🏁 写在最后
+
+Sing-box 的入门门槛其实不在技术，而在信息差：概念理清了，剩下就是"选客户端、贴订阅、开 TUN"三件事。本文作为本站 Sing-box 系列的总纲，会持续更新；建议收藏后按 [进阶路线图](#七进阶路线图入门之后学什么) 一篇篇刷。遇到问题先查 FAQ，FAQ 没有的再去对应专题文章里找 —— 每一篇都链在上面了。
