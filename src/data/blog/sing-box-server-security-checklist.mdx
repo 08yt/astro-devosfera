@@ -1,0 +1,117 @@
+---
+title: "Sing-box 服务端安全加固总纲：7 项检查清单，从裸奔到安心（2026版）"
+author: "易邦"
+pubDatetime: 2026-08-20T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - Sing-box
+  - 安全
+description: "自建 Sing-box 节点的 7 项安全检查清单：SSH 加固、防火墙最小放行、Fail2ban、订阅防泄露、管理面板不暴露、定期更新、配置备份，附站内深挖教程。"
+---
+
+节点搭好能用只是第一步。公网上的 VPS 每分钟都在被扫描，这篇给你一份 **7 项检查清单**，照着做一遍，节点就从"裸奔"变成"安心"。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **必做 3 件**：SSH 密钥登录、防火墙只开放必要端口、Fail2ban 防暴力破解。
+> - **易漏 2 件**：管理面板/API 别暴露公网、订阅链接别公开传播。
+> - **习惯 2 件**：定期更新系统与 sing-box、配置备份异地存一份。
+> - 每项下面都链了站内深挖教程，本篇是总纲。
+
+---
+
+## ✅ 1. SSH：关掉密码登录
+
+90% 的 VPS 入侵从 SSH 暴力破解开始。
+
+- 生成 Ed25519 密钥，上传公钥到 `~/.ssh/authorized_keys`
+- `sshd_config` 里 `PasswordAuthentication no`
+- 改默认 22 端口（防自动化扫描，便宜有效）
+
+详细步骤见 [《SSH 密钥登录加固》](/posts/vps-basic-security-ssh-keys/)。
+
+---
+
+## ✅ 2. 防火墙：最小放行原则
+
+只开必须的端口，其余全关：
+
+```bash
+# UFW 示例：只放行 SSH（改过的端口）、sing-box 端口
+ufw default deny incoming
+ufw allow 2222/tcp        # 你的 SSH 端口
+ufw allow 443/tcp         # VLESS-Reality
+ufw allow 443/udp         # Hysteria2（UDP 必须）
+ufw enable
+```
+
+Hysteria2 用户注意：**UDP 一定要放行**，只开 TCP 会表现为"能连但极慢"。完整实操见 [《UFW + Fail2ban 打造防护》](/posts/singbox-vps-security-ufw-fail2ban/)。
+
+---
+
+## ✅ 3. Fail2ban：自动封禁扫描 IP
+
+装好 Fail2ban，SSH 被暴力尝试几次就自动拉黑 IP。sing-box 本身（尤其 Reality）不怕探测，但 SSH 必须有这层。
+
+```bash
+apt install fail2ban -y
+systemctl enable --now fail2ban
+```
+
+配置细节见 [《UFW + Fail2ban》](/posts/singbox-vps-security-ufw-fail2ban/) 与 [《服务端终极防护》](/posts/vps-security-sing-box-server/)。
+
+---
+
+## ✅ 4. 订阅链接：Token 就是密码
+
+- 订阅 URL 里带的 Token **等同于密码**，别截图发群、别贴论坛。
+- 机场后台一般支持"重置订阅链接"，怀疑泄露立刻重置。
+- 自建用户：给家人朋友用可以，但别公开传播；Nginx/Caddy 前面加一层简单鉴权更稳。
+
+---
+
+## ✅ 5. 管理面板与 API：别暴露公网
+
+- Clash API、Web Dashboard、gRPC API 只监听 `127.0.0.1`，需要远程看就走 SSH 隧道。
+-  dashboard 有密码就设强密码，别用默认弱口令。
+
+---
+
+## ✅ 6. 定期更新：系统 + sing-box
+
+- 系统补丁：`apt update && apt upgrade` 每月跑一次（或配自动安全更新）。
+- sing-box 内核：跟随稳定版更新，大版本先看 [《1.14 升级避坑》](/posts/sing-box-114-migration-guide/) 再升。
+- 更新前备份配置（见下一项）。
+
+---
+
+## ✅ 7. 配置备份：异地存一份
+
+```bash
+# 备份 sing-box 配置与证书
+tar czf sing-box-backup-$(date +%F).tar.gz /etc/sing-box/ /usr/local/etc/sing-box/ 2>/dev/null
+```
+
+备份传到本地电脑或对象存储。VPS 厂商跑路/误删/被黑，10 分钟就能在新机器上复活。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: Reality 不是号称不怕探测吗，还要做这些？
+
+**答**：Reality 抗的是"协议识别"，SSH 爆破、面板弱口令、系统漏洞是另一条攻击链。两码事，都要做。
+
+### Q2: 小白怕把自己锁在外面怎么办？
+
+**答**：改 SSH 配置前，先开两个终端窗口连着；VPS 商家一般有网页控制台（VNC），那是最后的救命绳。按顺序做：先加密钥→验证密钥能登→再关密码。
+
+### Q3: 多久检查一次？
+
+**答**：搭好时按清单走一遍；之后每月看一次 Fail2ban 封了多少 IP（`fail2ban-client status sshd`），心里有数就行。
+
+---
+
+_（总纲阅读：[《Sing-box 全平台小白入门指南》](/posts/sing-box-beginner-guide/)；[《新手一条龙》](/posts/sing-box-beginner-end-to-end-guide/)；连不上看 [《排错总纲》](/posts/sing-box-troubleshooting-guide/)。）_

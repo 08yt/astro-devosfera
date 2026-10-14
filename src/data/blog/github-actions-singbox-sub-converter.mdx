@@ -109,7 +109,7 @@ PAT 只给 `gist` 权限，别给 repo 全权限，泄露了也只影响 Gist。
 `cron: "0 20 * * *"` 是每天北京时间凌晨 4 点跑（GitHub 用 UTC）。注意两点：
 
 1. **schedule 可能延迟**：GitHub 高峰期 cron 会排队几分钟到几十分钟，别指望分秒不差。
-2. **免费额度**：私有仓库每月 2000 分钟 Actions，跑个转换脚本（每次 <1 分钟）连零头都用不完。
+2. **免费额度**：私有仓库每月 2000 分钟 Actions，跑个转换脚本（每次 &lt;1 分钟）连零头都用不完。
 
 想手动触发？workflow 里留了 `workflow_dispatch`，在 Actions 页面点 Run 即可。
 

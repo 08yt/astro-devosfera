@@ -1,7 +1,7 @@
 ---
 title: "Sing-box 连不上？从看日志到修复的完整诊断手册（2026版）"
 author: "毛佳国"
-pubDatetime: 2026-10-14T10:00:00.000+08:00
+pubDatetime: 2026-07-23T10:00:00.000+08:00
 featured: true
 draft: false
 tags:
@@ -66,7 +66,7 @@ TUN 模式特有
 
 2. **常见写法错误**：
    - JSON 逗号多一个/少一个 → 用在线 JSON 校验器过一遍
-   - 抄了旧教程的废弃字段 → 对照 [《1.14 升级避坑指南》](/posts/sing-box-114-migration-guide/) 的废弃表改
+   - 抄了旧教程的废弃字段 → 对照官方迁移文档的废弃表改
    - 日志里出现 `deprecated` → 按提示的新字段改，不是能跑就行的
 
 3. **图形客户端闪退**：同样先看日志页，大概率也是配置 JSON 非法；恢复手段是切回上一个能用的配置备份。
@@ -125,7 +125,7 @@ TLS 对时间极敏感，客户端与服务端时间差几分钟就握手失败�
 **症状**：Google 能开、国内 App 打不开，或反过来。
 
 1. **分流规则写反**：检查 `final` 是不是被设成了 `direct`；`geosite-cn`/`geoip-cn` 直连规则要在 `final: proxy` 之前。
-2. **规则集没下载**：远程 SRS 下不下来 → 分流瘫痪；看日志有没有下载失败，换规则集源或用本地缓存（1.14+ 自动预热）。
+2. **规则集没下载**：远程 SRS 下不下来 → 分流瘫痪；看日志有没有下载失败，换规则集源或用本地缓存（新版自动预热）。
 3. **DNS 泄漏/劫持**：TUN 下建议 `hijack-dns` + FakeIP，原理见 [《DNS 防泄漏指南》](/posts/sing-box-dns-leak-fakeip/)。
 4. **国内 App 打不开**：微信/银行类加直连，或参考 [《TUN 进阶规则》](/posts/sing-box-client-tun-advanced-rules/) 的豁免思路。
 
@@ -166,7 +166,7 @@ TLS 对时间极敏感，客户端与服务端时间差几分钟就握手失败�
 
 ### Q4: 想系统学排错，还看哪篇？
 
-**答**：[《桌面端进阶：10 大翻车现场》](/posts/desktop-clients-advanced-tips/) 是本篇的案例库，[《1.14 升级避坑指南》](/posts/sing-box-114-migration-guide/) 解决版本升级类翻车。
+**答**：[《桌面端进阶：10 大翻车现场》](/posts/desktop-clients-advanced-tips/) 是本篇的案例库，版本升级类翻车对照官方迁移文档处理。
 
 ---
 

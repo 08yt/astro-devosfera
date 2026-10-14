@@ -1,0 +1,124 @@
+---
+title: "Sing-box 场景分流总纲：流媒体解锁、游戏加速、AI 专线一次配好（2026版）"
+author: "易邦"
+pubDatetime: 2026-04-25T10:00:00.000+08:00
+featured: true
+draft: false
+tags:
+  - Sing-box
+  - 分流
+description: "Sing-box 按场景分流实战：Netflix/Disney/TikTok 解锁、游戏低延迟、ChatGPT 专线，附可直接抄的新版规则配置与四种匹配手段组合方法论。"
+---
+
+分流配不对，再快的节点也白搭。这篇是场景分流的总纲：**先讲方法论，再给三类高频场景的现成规则**，复制改改就能用。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **四种匹配手段**：域名/规则集 → 最常用；IP/CIDR → 兜底；进程名 → 桌面端精细控制。
+> - **流媒体**：按服务商规则集走解锁节点/WARP 链式。
+> - **游戏**：UDP + 低延迟节点，进程直连或专线。
+> - **AI 服务**：OpenAI/Claude/Gemini 走干净 IP（WARP 链式最省事）。
+> - 配置语法为新版写法，规则集用二进制 `.srs`。
+
+---
+
+## 🧰 方法论：四种匹配手段怎么组合
+
+| 手段 | 配置字段 | 适合 | 开销 |
+|---|---|---|---|
+| 域名规则集 | `rule_set: ["geosite-netflix"]` | 按网站/服务分流 | 低（推荐） |
+| IP 规则集 | `rule_set: ["geoip-cn"]` | 按地区兜底 | 低 |
+| 进程名 | `process_name: ["steam.exe"]` | 按 App 分流（桌面端） | 中 |
+| 端口/协议 | `port`, `network: "udp"` | 游戏、特殊服务 | 低 |
+
+**组合顺序**（route.rules 从上到下，第一条命中即生效）：
+
+```json
+{
+  "route": {
+    "rules": [
+      { "action": "route", "rule_set": ["geosite-ads"], "outbound": "block" },
+      { "action": "route", "process_name": ["steam.exe"], "outbound": "游戏专线" },
+      { "action": "route", "rule_set": ["geosite-openai", "geosite-netflix"], "outbound": "warp-out" },
+      { "action": "route", "rule_set": ["geosite-cn"], "outbound": "direct" },
+      { "action": "route", "outbound": "proxy" }
+    ],
+    "rule_set": [
+      { "type": "remote", "tag": "geosite-ads", "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-ads.srs",
+        "download_detour": "proxy" },
+      { "type": "remote", "tag": "geosite-openai", "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-openai.srs",
+        "download_detour": "proxy" },
+      { "type": "remote", "tag": "geosite-netflix", "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-netflix.srs",
+        "download_detour": "proxy" },
+      { "type": "remote", "tag": "geosite-cn", "format": "binary",
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+        "download_detour": "proxy" }
+    ],
+    "final": "proxy"
+  }
+}
+```
+
+> 规则集制作与自建见 [《规则集终极指南》](/posts/sing-box-rule-set-ultimate-guide/)；`block`/`hijack-dns` 特殊出站请用新版写法（`reject`/`hijack-dns`）。
+
+---
+
+## 🎬 场景一：流媒体解锁
+
+**痛点**：机房 IP 被 Netflix 判数据中心只能看自制剧；Disney+ 锁区；TikTok 拔卡还提示地区不可用。
+
+**解法分两层**：
+
+1. **分流**：`geosite-netflix` / `geosite-disney` / `geosite-tiktok` 走解锁节点（落地机或住宅 IP）；
+2. **IP 太脏**：廉价 VPS 的广播 IP 连自制剧都看不了 → 用 WARP 链式代理洗白，详见 [《WARP 解锁流媒体与 AI》](/posts/sing-box-warp-chatgpt-netflix/)（WireGuard 出站 + `mtu: 1280` 是关键）。
+
+**经验**：流媒体分流用**域名规则集**别用 IP——Netflix 的 CDN IP 段天天变，IP 规则集永远追不上。
+
+---
+
+## 🎮 场景二：游戏加速
+
+**痛点**：延迟高、UDP 丢包、匹配到国外服务器。
+
+1. **走 UDP**：游戏流量基本是 UDP，确保 TUN/出站没把 UDP 掐了（`network` 别限成 tcp-only）。
+2. **进程分流**（桌面端）：`process_name` 把游戏本体走低延迟专线，其他流量走普通节点——更新补丁的大流量别跟游戏抢。
+3. **节点选择**：游戏服在哪个区，节点就选哪个区；跨区联机优先 Hysteria2/TUIC 这类 UDP 原生的协议（见 [《协议选型》](/posts/sing-box-protocol-selection-guide/)）。
+4. **DNS**：游戏域名解析走直连 DNS，别让 FakeIP 把匹配服务器搞错区。
+
+---
+
+## 🤖 场景三：AI 服务专线
+
+**痛点**：ChatGPT "Access denied"、Claude 锁区、Gemini 要特定地区。
+
+1. **规则集**：`geosite-openai`、`geosite-anthropic`、`geosite-google`（Gemini 走 Google 分组）单独走干净 IP。
+2. **最省事的方案**：WARP 链式（同场景一），Cloudflare 的 IP 干净且免费，AI 服务基本不拦。
+3. **注意**：AI 服务对 IP 纯净度敏感，**别跟流媒体共用解锁节点**——一个 IP 又看剧又调 API，被风控的概率翻倍。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 规则多了会变慢吗？
+
+**答**：二进制 `.srs` 规则集匹配极快，几万条也无感。慢的通常是文本规则集或 DNS 解析，先看这两处。
+
+### Q2: geosite 和 geoip 到底用哪个？
+
+**答**：能用 geosite（域名）就别用 geoip（IP）。域名精准、更新快；IP 段是兜底手段，给 geosite 覆盖不到的用。
+
+### Q3: 手机端（SFI）能用进程分流吗？
+
+**答**：不能，iOS 沙盒限制（越狱版除外）。手机端靠域名/规则集分流，见 [《SFI 实战》](/posts/sing-box-ios-sfi-guide/)。
+
+### Q4: 规则改完不生效？
+
+**答**：三步查：① `sing-box check` 过配置 ② 规则顺序（上细下粗）③ 重启客户端清旧连接。还不行看 [《排错总纲》](/posts/sing-box-troubleshooting-guide/)。
+
+---
+
+_（总纲阅读：[《配置总纲》](/posts/sing-box-full-configuration-combat-2026/)；[《TUN 进阶规则》](/posts/sing-box-client-tun-advanced-rules/)；[《WARP 解锁》](/posts/sing-box-warp-chatgpt-netflix/)。）_
