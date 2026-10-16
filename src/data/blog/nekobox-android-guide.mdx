@@ -1,0 +1,89 @@
+---
+title: "NekoBox 安卓实战：订阅导入、路由规则与配置备份全攻略（2026版）"
+author: "易邦"
+pubDatetime: 2026-05-28T10:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Sing-box
+  - 客户端
+description: "NekoBox 是安卓上最受欢迎的第三方 Sing-box 客户端。本文讲安装、订阅导入、路由规则配置、测速分组与配置备份恢复。"
+---
+
+NekoBox（MatsuriDayo 出品）是安卓端口碑最好的第三方 sing-box 客户端：界面比官方 SFA 好用，路由编辑直观，更新活跃。很多人的主力就是它。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **安装**：[GitHub Releases](https://github.com/MatsuriDayo/NekoBoxForAndroid/releases) 下 APK，arm64 为主。
+> - **导入**：订阅链接粘贴即用，支持自动更新；单节点链接也直接吃。
+> - **路由**：预设规则 + 自定义，国内直连一键配好。
+> - **备份**：设置里导出配置，换手机一键恢复。
+
+---
+
+## 📲 1. 安装
+
+去 [NekoBoxForAndroid 的 Releases](https://github.com/MatsuriDayo/NekoBoxForAndroid/releases)下载 APK。注意区分：NekoBox for Android 才是手机版，别下成桌面版。
+
+---
+
+## 🔗 2. 订阅导入与分组
+
+1. 左侧菜单 → 订阅 → 添加，粘贴订阅链接。
+2. 设置自动更新（建议 12 小时），机场换节点自动跟。
+3. **分组管理**：多订阅按用途分组（主力/备用/自建），节点列表加前缀命名，一眼定位。
+
+Clash 订阅同样先转 sing-box 格式（[《订阅转换总纲》](/posts/convert-clash-to-singbox/)）。
+
+---
+
+## 🚦 3. 路由规则：三步配好
+
+NekoBox 的路由支持预设模板：
+
+1. **全局/绕过大陆**：新手直接用"绕过大陆"预设，`geosite-cn` + `geoip-cn` 直连，其余代理——80% 的人这就够了。
+2. **自定义**：在路由设置里加规则，顺序从上到下，第一条命中生效（上细下粗）。
+3. **广告拦截**：加 `geosite-ads` → 拦截，App 开屏广告少一半。
+
+方法论见 [《场景分流总纲》](/posts/sing-box-scenario-routing-guide/)。
+
+---
+
+## 📊 4. 测速与选优
+
+- **URLTest**：对分组做延迟测试，自动选最低延迟节点。
+- **手动置顶**：常用的节点长按置顶，通勤切 Wi-Fi/流量时不用翻列表。
+- **故障转移**：设好备用分组，主力挂了手动一切就行。
+
+---
+
+## 💾 5. 备份与恢复：换手机不折腾
+
+设置 → 备份 → 导出到文件（含订阅、路由、偏好设置）。**注意**：备份文件含订阅 Token，别传网盘公开链接，自己收好。
+
+新手机装好 NekoBox → 导入备份 → 5 分钟满血复活。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: NekoBox 和 SFA 内核有区别吗？
+
+**答**：都是 sing-box 内核，协议支持一样。区别在界面和易用性：NekoBox 图形化更好，SFA 更原生、更新更快。见 [《SFA 教程》](/posts/sing-box-android-sfa-guide/)。
+
+### Q2: 更新后配置乱了？
+
+**答**：大版本更新前先备份（第 5 节）。乱了就恢复备份，比重配快十倍。
+
+### Q3: 通知栏常驻关不掉？
+
+**答**：那是前台服务保活，故意设计的。真想关可以在设置里找"前台服务"选项，但关了容易被系统杀后台断连。
+
+---
+
+_📚 **安卓专题**：① [《SFA 官方教程》](/posts/sing-box-android-sfa-guide/) → ② 本篇（NekoBox） → ③ [《安卓 TUN 与分应用代理进阶》](/posts/android-tun-app-routing-guide/)_
+
+_（对比选型见 [《Hiddify vs NekoBox》](/posts/sing-box-hiddify-nekobox-gui/)；连不上看 [《排错总纲》](/posts/sing-box-troubleshooting-guide/)。）_
+
+_> 本文基于公开文档与社区教程整理，未经真机逐项实测；App 界面以实际版本为准。_

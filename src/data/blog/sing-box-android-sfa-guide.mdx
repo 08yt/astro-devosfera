@@ -1,0 +1,101 @@
+---
+title: "SFA 保姆级教程：安卓安装 Sing-box 官方客户端并导入订阅（2026版）"
+author: "易邦"
+pubDatetime: 2026-02-10T10:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Sing-box
+  - 客户端
+description: "手把手教你 在安卓手机上安装 SFA（sing-box for Android）、导入机场订阅或自建节点、开启 TUN 与分应用代理。基于官方文档整理。"
+---
+
+SFA（sing-box for Android）是官方安卓客户端，内核永远最新，对 VLESS-Reality、Hysteria2、TUIC 等新协议支持最全。安卓不像 iOS 那样要非国区 ID，安装自由度高得多。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **安装**：GitHub Releases 下 APK（认准 SagerNet 官方仓库），或 F-Droid。
+> - **导入**：远程订阅 URL 一键导入，或粘贴 `vless://` / `ss://` 分享链接。
+> - **启动**：选配置 → 点连接 → 允许 VPN 连接请求 → 状态栏出现钥匙图标即成功。
+> - **分应用**：TUN 下可按 App 设置代理/直连，微信支付宝走直连。
+
+---
+
+## 📲 1. 安装
+
+1. 打开 [SagerNet/sing-box 的 GitHub Releases](https://github.com/SagerNet/sing-box/releases)，找到 `SFA-*.apk`（注意架构：主流手机选 arm64）。
+2. 允许"安装未知应用"后安装。认准发布者是 SagerNet，防钓鱼改包。
+3. 部分手机（如华为无 GMS）同样可用，SFA 不依赖谷歌服务。
+
+> 版本选择：跟着最新稳定版走；想尝鲜 1.15 alpha 的新 TUN 栈可以，但主力机建议稳定版。
+
+---
+
+## 📥 2. 导入配置：三种方式
+
+### 方式 A：远程订阅（最常用）
+
+新建远程配置，粘贴订阅链接，设好自动更新间隔。注意：SFA 原生只吃 sing-box JSON，Clash 订阅先看 [《订阅转换总纲》](/posts/convert-clash-to-singbox/) 转一道。
+
+### 方式 B：粘贴分享链接
+
+`vless://`、`trojan://`、`ss://`、`hysteria2://` 单节点链接直接粘贴导入，适合自建用户。
+
+### 方式 C：本地文件/扫码
+
+电脑上写好的 `config.json` 传到手机导入；部分版本支持二维码扫描导入。
+
+---
+
+## 🔛 3. 连接与 TUN
+
+1. 选中配置，点连接按钮。
+2. 系统弹窗"VPN 连接请求"，点**确定**（安卓规定，TUN 必须走系统 VPN 通道，一次只能有一个 VPN 应用）。
+3. 状态栏出现**钥匙图标**即接管成功。
+
+**注意**：SFA 和 NekoBox、Hiddify 不要同时开，安卓一次只允许一个 VPN。
+
+---
+
+## 📱 4. 分应用代理：安卓的独家优势
+
+安卓不像 iOS 那样被沙盒锁死，SFA 支持按 App 分流：
+
+- **银行/支付类**（微信支付、支付宝、手机银行）→ 直连，避免风控
+- **游戏** → 走低延迟专线或直连
+- **浏览器/视频** → 走代理
+
+在路由设置里按包名添加规则即可。原理和进阶玩法见 [《场景分流总纲》](/posts/sing-box-scenario-routing-guide/)。
+
+---
+
+## 🔋 5. 省电与保活
+
+- **电池优化**：把 SFA 设为"不优化"（各厂商叫法不同：后台弹出界面、自启动管理里允许），否则锁屏后会被杀掉断连。
+- **前台服务**：保持通知栏常驻，系统杀后台的概率大减。
+- **按需连接**：部分版本支持按 Wi-Fi 自动启停，到家连 Wi-Fi 自动断开。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 提示"VPN 连接请求"被拒绝？
+
+**答**：有些手机管家/安全中心会拦截，到系统设置 → VPN 里手动允许。公司配的 MDM 设备可能禁用 VPN，那就无解。
+
+### Q2: 导入订阅后节点全红？
+
+**答**：先确认订阅有效、时间同步（见 [《排错总纲》](/posts/sing-box-troubleshooting-guide/)）；再看协议是否太新，老版本 SFA 不支持 TUIC v5 这类，去 Releases 更新。
+
+### Q3: 和 NekoBox 二选一？
+
+**答**：要原生内核、追新协议选 SFA；要更好用的图形界面、路由编辑选 NekoBox（见本专题第二篇）。配置可以共用同一份订阅。
+
+---
+
+_📚 **安卓专题**：① 本篇（SFA 官方） → ② [《NekoBox 实战》](/posts/nekobox-android-guide/) → ③ [《安卓 TUN 与分应用代理进阶》](/posts/android-tun-app-routing-guide/)_
+
+_（总纲阅读：[《Sing-box 全平台小白入门指南》](/posts/sing-box-beginner-guide/)；客户端选型见 [《下载页》](/download/)。）_
+
+_> 本文基于 sing-box 官方文档与公开资料整理，未经真机逐项实测；App 界面以实际版本为准。_
