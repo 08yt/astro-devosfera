@@ -1,0 +1,98 @@
+---
+title: "NekoRay 停更之后：为什么说 Sing-box 是它的天然接班人（2026版）"
+author: "易邦"
+pubDatetime: 2026-11-06T10:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Sing-box
+  - 客户端
+description: "NekoRay 仓库已归档，官方写明不再维护。本文核实停更现状、分析它与 Sing-box 的关系，并给出三条接班路线和三步迁移方法。"
+---
+
+**一句话结论**：NekoRay 已经正式停更（仓库归档、官方标注"不再维护，自寻替代品"），但不必悲情——它本来就是 Sing-box 的图形外壳，迁到 Sing-box 客户端生态是所有替代品里成本最低的一条路。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **现状**：NekoRay（15.3k Star）仓库已 Archived，最后版本 4.0.1 停在 2024-12，近两年无更新。
+> - **关系**：NekoRay 的后端就是 sing-box 内核，你的节点、订阅、路由思路都能平移。
+> - **接班首选**：桌面继续折腾选 GUI.for.SingBox；全平台省心选 Hiddify；下载见 [《下载页》](/download/)。
+> - **还能凑合用吗**：短期能跑，但内核冻结意味着新协议和新配置写法都跟不上，建议排期迁移。
+
+---
+
+## 📋 先核实：NekoRay 到底怎么了
+
+不是传闻，是仓库页面的明文状态（截至 2026-10-23 核实）：
+
+- GitHub 仓库 **已归档（Archived）**，只读，不再接受更新；
+- 仓库描述直接改成了「**不再维护，自寻替代品**」；
+- 最后一个版本 **4.0.1 发布于 2024-12-12**，此后代码零提交；
+- 它曾经也有 15.3k Star，是 Qt 桌面端最受欢迎的 sing-box 图形客户端之一。
+
+作者同为 MatsuriDayo 的安卓端 NekoBox 是另一个项目，不要混淆——本文说的只有桌面端 NekoRay。
+
+---
+
+## 🧬 它和 Sing-box 是什么关系
+
+这决定了迁移成本。NekoRay 从来不是独立内核，它是 **sing-box 的 Qt 图形前端**：你在里面建的服务器、链式代理、路由规则，最后都翻译成 sing-box 配置在跑。
+
+所以"NekoRay vs Sing-box"这个对比，结论和 [《Clash Verge Rev 要不要换》](/posts/sing-box-vs-clash-verge-rev/) 那篇正好相反：换 Clash 是换内核（Mihomo→Sing-box），要翻译规则；**离开 NekoRay 只是换壳，内核还是同一个**。你的订阅链接、节点参数、国内直连的路由逻辑，换到任何 sing-box 客户端里都成立。
+
+---
+
+## ⚠️ 继续用老版本，代价是什么
+
+归档不等于立刻不能用——手头的 4.0.1 今天还能连。但代价会随时间放大：
+
+1. **内核冻结**：它内置的 sing-box 停在 2024 年底的水平。此后 sing-box 经历了 1.12 的 DNS 新格式、1.14 的规则动作化等三代变化（见 [《1.14 升级迁移指南》](/posts/sing-box-114-migration-guide/)），新教程里的配置它大多不认。
+2. **新协议缺席**：后续协议改进与安全修复都不会再有。
+3. **系统兼容性**：新系统（新版 macOS / Windows / Linux 发行版）上出问题，没人修。
+
+一句话：**当备用可以，当主力越用越被动**。
+
+---
+
+## 🎯 三条接班路线
+
+| 你的用法 | 接班人 | 理由 |
+|---|---|---|
+| 桌面端重度折腾（链式代理、自定义出站） | **GUI.for.SingBox** | 同为桌面深耕型，订阅/规则/DNS 全图形化，插件系统还能玩脚本，见 [《GUI.for.SingBox 教程》](/posts/gui-for-singbox-tutorial/) |
+| 桌面只要稳，功能越新越好 | **sing-box-windows**（Windows） | 1.14 内核、TUN DNS 接管、Web Dashboard，见 [《Windows 客户端指南》](/posts/sing-box-windows-client-guide/) |
+| 手机电脑都想统一 | **Hiddify** | 五端一套逻辑，见 [《三大全能客户端横评》](/posts/singbox-allround-clients-comparison/) |
+
+---
+
+## 🔄 迁移三步（十分钟）
+
+1. **导出家底**：在 NekoRay 里把订阅链接抄出来（或直接去机场后台复制），节点太多就整组导出；
+2. **新客户端导入**：在接班客户端里粘贴同一条订阅。Clash 格式的先转一道，见 [《订阅转换总纲》](/posts/convert-clash-to-singbox/)；
+3. **对齐路由**：把"国内直连、广告拦截"这类常用规则在新客户端里按 [《场景分流总纲》](/posts/sing-box-scenario-routing-guide/) 设一遍。链式代理等高级配置，GUI.for.SingBox 里有对应的出站组写法，逐条搬即可。
+
+搬完别急着删 NekoRay，并行用几天确认无误再卸载——配置都在订阅里，随时能搬回来。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: NekoBox（安卓）也停更了吗？
+
+**答**：不是一个项目。安卓的 NekoBox 是 MatsuriDayo 的另一条线，本文核实的只是桌面端 NekoRay 的归档状态。安卓选型看 [《NekoBox 安卓实战》](/posts/nekobox-android-guide/) 与 [《安卓专题》](/posts/sing-box-android-sfa-guide/)。
+
+### Q2: NekoRay 的配置文件能直接导入 GUI.for.SingBox 吗？
+
+**答**：它的内部配置格式不能整包直搬，但订阅链接通用、节点参数可逐条对应。实际迁移的主体工作就是第 2、3 步，十分钟量级。
+
+### Q3: 停更的客户端有安全风险吗？
+
+**答**：主要风险不在"壳"，在冻结的内核：新的协议层漏洞修复、TLS 相关更新都不会再有。加上它处理的是你的全部流量，长期用冻结内核不是好主意，这也是建议排期迁移的原因。
+
+---
+
+_📚 **对比系列**：① [《三大全能客户端横评》](/posts/singbox-allround-clients-comparison/) → ② [《Clash Verge Rev 要不要换 Sing-box》](/posts/sing-box-vs-clash-verge-rev/) → ③ 本篇（NekoRay 接班指南）_
+
+_（客户端下载入口汇总见 [《下载页》](/download/)。）_
+
+_> NekoRay 状态数据于 2026-10-23 经其 GitHub 仓库核实（Archived、v4.0.1、描述原文）；迁移步骤基于公开资料整理，未经真机逐项实测。_
