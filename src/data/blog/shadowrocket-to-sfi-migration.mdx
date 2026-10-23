@@ -1,0 +1,100 @@
+---
+title: "从 Shadowrocket / Loon 迁移到 SFI：iOS 用户的 Sing-box 平移手册（2026版）"
+author: "易邦"
+pubDatetime: 2026-11-20T10:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Sing-box
+  - 客户端
+description: "小火箭和 Loon 用得好好的，为什么还要迁到 SFI？本文说清三类值得迁的人，给出订阅导入、规则翻译对应表和四步平移流程，迁不了的东西也一次讲明。"
+---
+
+**一句话结论**：只用 iPhone 一个设备、小火箭规则已经调顺手的人，**不用迁**；家里设备都上了 Sing-box、想全平台一套配置的人，迁到 SFI 是一次性的小工程——订阅十分钟导入，规则照着对应表翻译，一晚搞定。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **迁移动机**：SFI 免费（小火箭 2.99 美元买断、Loon 付费）、sing-box 官方内核新协议最快、全平台同一套 JSON 配置与规则。
+> - **订阅**：同一条订阅链接直接导入 SFI，Clash 格式先转换。
+> - **规则**：小火箭/Loon 的规则和 sing-box 是"同思路不同写法"，文中有逐条对应表。
+> - **迁不了的**：小火箭的脚本与 Loon 的插件/脚本生态没有对应物，重度脚本玩家慎迁。
+
+---
+
+## 🤔 先想清楚：你属于哪类人
+
+**值得迁的三类**：
+
+1. **全平台统一党**：电脑用 GUI.for.SingBox、安卓用 SFA，就差 iPhone 还在小火箭里"单机运行"。迁到 SFI 后四端一套配置、一套规则，改一处处处生效。
+2. **新协议追鲜党**：Hysteria2、TUIC、Reality 这些，sing-box 官方客户端永远是第一落点（见 [《协议选型指南》](/posts/sing-box-protocol-selection-guide/)）。
+3. **多设备/帮家人管配置党**：一份 JSON 发给所有人，比逐台教小火箭规则快得多。
+
+**不用迁的两类**：只用苹果设备且现状稳定；小火箭脚本/Loon 插件玩得很深（去广告脚本、签到脚本），SFI 没有脚本系统，迁过去等于自断一臂——这类人更适合看 [《Sing-box vs Loon》](/posts/sing-box-vs-loon/) 的对比再决定。
+
+---
+
+## 🧳 迁移前：把家底备齐
+
+1. **订阅链接**：打开小火箭/Loon，复制出你的订阅地址（机场的去后台复制原链接更稳）；自建的把分享链接都存好。
+2. **规则清单**：把你自己加过的自定义规则截图或导出——系统预设规则不用管，SFI 侧用 rule-set 替代；真正要翻译的只有你手加的那几条。
+3. **装好 SFI**：需要非国区 Apple ID，iOS 15+。完整安装与入门看 [《SFI 保姆级教程》](/posts/sing-box-ios-sfi-guide/)，下载入口在 [《下载页》](/download/)。
+
+---
+
+## 🔄 四步平移
+
+**第一步：导入订阅。** SFI 里新建远程配置，粘贴订阅链接。如果是 Clash 格式订阅，先按 [《订阅转换总纲》](/posts/convert-clash-to-singbox/) 转成 sing-box 格式再导入。
+
+**第二步：先裸跑一天。** 什么规则都先别搬，用 SFI 的默认分流（远程 rule-set 实现国内直连）跑一天，确认节点、速度、日常 App 都正常。地基稳了再谈规则。
+
+**第三步：翻译自定义规则。** 对照下节的对应表，把你在小火箭/Loon 里手加的规则逐条写成 sing-box 的 route rules，保存为本地配置文件或规则片段。
+
+**第四步：打开按需连接与 TUN 细节。** SFI 的 TUN 即开即用；再设置"按需连接"（指定 Wi-Fi 下自动断开/连接），这一步对齐小火箭的"按需求连接"，使用习惯无缝衔接。
+
+---
+
+## 🔤 规则对应表：同思路，不同写法
+
+| 你在小火箭 / Loon 里写的 | sing-box 里对应的写法 | 说明 |
+|---|---|---|
+| `DOMAIN-SUFFIX, google.com, Proxy` | route rule：`domain_suffix: ["google.com"]` → 代理出站组 | 域名后缀匹配，最常用 |
+| `DOMAIN-KEYWORD, ads, Reject` | `domain_keyword: ["ads"]` → `reject` 动作 | 1.14 起拦截用 action 表达，见 [《1.14 迁移指南》](/posts/sing-box-114-migration-guide/) |
+| `IP-CIDR, 1.2.3.0/24, DIRECT` | `ip_cidr: ["1.2.3.0/24"]` → `direct` 出站 | IP 段直连 |
+| `GEOIP, CN, DIRECT` | 远程 rule-set `geoip-cn` → `direct` | 不再本地维护 GEOIP 数据库，规则集云端更新 |
+| `FINAL, Proxy` | route 的 `final` 出站 | 兜底出口 |
+| 规则集订阅（ACL4SSR 等 .list） | 远程 rule-set（二进制 SRS） | 主流规则都有 SRS 版，换地址即可 |
+
+看出来了吗：**匹配条件的概念一一对应**，你多年攒的"哪类流量走哪"的经验全部保值，要换的只是语法。这也是从 Clash 迁过来的人最意外的省力点，原理和 [《Clash Verge Rev 迁移教程》](/posts/clash-verge-to-singbox-migration/) 相通。
+
+---
+
+## 🚧 一次说清：迁不了的东西
+
+- **脚本**：小火箭的脚本、Loon 的插件（去广告重写、自动签到等）在 sing-box 里没有运行环境。替代方案是规则层面的广告拦截 rule-set，但达不到脚本的灵活度。
+- **MitM 抓包改包**：Loon/Surge 的强项，SFI 不做这个。靠它吃饭的功能别迁。
+- **小火箭的配置分享生态**：网上流传的小火箭 `.conf` 配置文件不能直接喂 SFI，要按对应表翻译核心规则——好在大多数人用的都是机场的默认配置，实际要翻的没几条。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 迁过去后，小火箭要删吗？
+
+**答**：先别删。两个 App 的 VPN 互斥（同时只能开一个），但可以共存。并行用一两周，确认 SFI 覆盖了你的全部场景再删。买断的钱已经花了，不用有"浪费"的心理负担。
+
+### Q2: SFI 是免费的，会不会哪天收费或消失？
+
+**答**：SFI 是 sing-box 官方客户端，随内核开源生态走。历史上 App Store 的 app ID 因开发者账号变更换过（见 [《Apple 全家桶总览》](/posts/apple-singbox-clients-overview/)），但配置和订阅都在你自己手里，换壳成本极低。
+
+### Q3: 家人用小火箭、我用 SFI，规则能共享吗？
+
+**答**：思路能共享，文件不能直接互喂。实际做法：维护一份 sing-box 配置作"母版"，给小火箭的那台按对应表翻一次，之后小改动手动同步。大规模家庭共享还是全员 SFI 最省事。
+
+---
+
+_📚 **对比系列（全四篇）**：① [《三大全能客户端横评》](/posts/singbox-allround-clients-comparison/) → ② [《Clash Verge Rev 要不要换 Sing-box》](/posts/sing-box-vs-clash-verge-rev/) → ③ [《NekoRay 停更接班指南》](/posts/sing-box-vs-nekoray/) → ④ 本篇（iOS 迁移手册）_
+
+_（iOS 客户端全景看 [《Apple 全家桶总览》](/posts/apple-singbox-clients-overview/)；连不上先查 [《排错总纲》](/posts/sing-box-troubleshooting-guide/)。）_
+
+_> 本文规则对应关系基于 sing-box 官方文档与小火箭/Loon 公开规则语法整理，未经真机逐项实测；App 功能以实际版本为准。_
