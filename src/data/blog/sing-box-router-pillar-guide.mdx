@@ -1,0 +1,90 @@
+---
+title: "Sing-box 软路由总纲：主路由、旁路由与全家透明代理方案（2026版）"
+author: "易邦"
+pubDatetime: 2026-11-02T10:00:00.000+08:00
+featured: false
+draft: false
+tags:
+  - Sing-box
+  - 软路由
+description: "想让全家设备免装客户端、电视盒子也走代理？本文讲软路由上跑 Sing-box 的两种形态（主路由与旁路由）、三种透明代理方式的取舍，以及多 WAN 与 VLAN 隔离的搭配。"
+---
+
+**一句话结论**：软路由跑 sing-box 的目标只有一个——**全家设备零客户端透明代理**。能接受换主路由就用主路由形态；不想动现有网络，就用旁路由形态；透明代理优先 TProxy，特殊场景再考虑 TUN。
+
+> [!NOTE]
+> **📌 核心速览（TL;DR / 快问快答）：**
+>
+> - **两种形态**：主路由（OpenWrt 原生跑 sing-box，全权接管）vs 旁路由（单臂/双臂，旁路接管指定设备）。
+> - **三种透明方式**：TProxy（推荐，UDP 全支持）/ TUN（简单但有开销）/ redirect（仅 TCP，历史方案）。
+> - **两个进阶**：多 WAN 负载均衡（见 [《多 WAN 篇》](/posts/openwrt-multi-wan-singbox-loadbalancing/)）、VLAN/macvlan 隔离（见 [《macvlan 旁路网关篇》](/posts/openwrt-macvlan-bypass-gateway/)）。
+> - **硬件底线**：透明代理吃 CPU 与内存，老旧路由器（64MB 内存）别硬上，N100 小主机或 512MB 以上内存的路由是舒适区。
+
+---
+
+## 🧭 两种形态：先定架构，再谈配置
+
+### 主路由形态：OpenWrt 原生跑 sing-box
+
+路由器本身就是 OpenWrt，直接装 sing-box 包，全家流量天然经过它。优点是架构最干净、延迟最低；代价是主路由要能刷 OpenWrt，且一旦配置翻车全家断网，改动前务必备份配置。
+
+适合：已经有 OpenWrt 主路由、且愿意把代理做到网络层的人。
+
+### 旁路由形态：不动主路由，旁路接管
+
+主路由保持原样（运营商光猫路由或普通路由器），另起一台设备（旧电脑、N100 小主机、树莓派）跑 sing-box 做旁路由，指定设备把网关指向它。
+
+- **单臂旁路由**：一根网线同时进出，部署最简单，千兆内网够用；
+- **双臂旁路由**：两根网线分进出，性能更好，适合千兆宽带跑满。
+
+适合：不想动主路由、租房、或主路由刷不了机的人。入门概念见 [《什么是软路由》](/posts/what-is-openwrt-soft-router/)，网络拓扑设计见 [《AP+AC 组网拓扑篇》](/posts/ap-ac-router-network-topology/)。
+
+---
+
+## 🔀 三种透明代理方式的取舍
+
+| 方式 | 原理 | 优点 | 缺点 |
+|---|---|---|---|
+| **TProxy（推荐）** | 内核级透明代理，保留真实源 IP | TCP+UDP 全支持，游戏/视频通话无碍 | 需内核与防火墙规则配合，配置稍复杂 |
+| **TUN** | 虚拟网卡接管流量 | 配置简单直观 | 额外一层转发开销，大流量下 CPU 占用高 |
+| **redirect** | iptables 重定向 | 最老最简单 | 仅 TCP，UDP 流量会漏网，现代场景不推荐 |
+
+**实操**：TProxy 的完整配置见 [《OpenWrt TProxy 篇》](/posts/openwrt-singbox-tproxy/)；TUN 的调优思路见站内 [《TUN 进阶规则》](/posts/sing-box-client-tun-advanced-rules/)。家用场景直接选 TProxy，不用纠结。
+
+---
+
+## 🌐 两个进阶搭配
+
+**多 WAN 负载均衡**：双宽带（比如主宽带 + 副宽带）可以用 sing-box 的出站组做负载均衡与故障切换，细节见 [《多 WAN 篇》](/posts/openwrt-multi-wan-singbox-loadbalancing/)。注意负载均衡不等于带宽叠加，单连接速度仍受单条线路限制。
+
+**VLAN / macvlan 隔离**：想让一部分设备（比如孩子的平板、IoT 设备）走直连、另一部分走代理，用 VLAN 或 macvlan 把设备分组，组间策略互不干扰。方案见 [《macvlan 旁路网关篇》](/posts/openwrt-macvlan-bypass-gateway/)。
+
+---
+
+## ⚠️ 上软路由前的三条提醒
+
+1. **先在小范围试点**：先让一台电视或一台手机走旁路由跑一周，稳定了再推全家——全家断网的代价比慢一周大得多。
+2. **DNS 别漏**：透明代理最容易翻车在 DNS 泄露上，软路由的 DNS 必须同样走 sing-box 的规则（见站内 [《DNS 泄露与 FakeIP 篇》](/posts/sing-box-dns-leak-fakeip/)），否则流量走了代理、DNS 还在裸奔。
+3. **留一条回家的路**：主路由管理地址、旁路由的 SSH 口令、配置备份文件，三样东西离线存一份。半夜断网时，靠的是这些而不是教程。
+
+---
+
+## ❓ 常见问题与 AI 快问快答 (FAQ)
+
+### Q1: 旁路由和主路由，延迟差多少？
+
+**答**：内网多一跳，正常在 1ms 以内，体感无差别。真正影响延迟的是节点质量和出站策略，不是旁路由本身。
+
+### Q2: 电视盒子、游戏机这种装不了客户端的设备怎么办？
+
+**答**：这正是软路由的价值：设备零改动，网关指向旁路由即生效。游戏机走 UDP 记得用 TProxy，别用 redirect。
+
+### Q3: 软路由方案和每台设备装客户端，哪个更好？
+
+**答**：设备少（3 台以内）装客户端更灵活；设备多、有电视/IoT，软路由一次配置全家受益。两者也可以混用：主力设备装客户端精细控制，其余设备走软路由兜底。
+
+---
+
+_（软路由系列：[《什么是软路由》](/posts/what-is-openwrt-soft-router/)；[《OpenWrt TProxy 篇》](/posts/openwrt-singbox-tproxy/)；[《多 WAN 篇》](/posts/openwrt-multi-wan-singbox-loadbalancing/)；[《macvlan 旁路网关篇》](/posts/openwrt-macvlan-bypass-gateway/)；[《AP+AC 组网拓扑篇》](/posts/ap-ac-router-network-topology/)；分流方法论见 [《场景分流总纲》](/posts/sing-box-scenario-routing-guide/)；排错见 [《排错总纲》](/posts/sing-box-troubleshooting-guide/)。）_
+
+_> 本文基于公开资料与 OpenWrt/sing-box 社区实践整理，未经真机逐项实测；路由器型号与固件版本以实际为准。_
